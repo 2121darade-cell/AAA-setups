@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="mr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Finanthropist Educare 2.0 — Admin Control Suite</title>
+  <link rel="icon" type="image/png" href="./assets/logo.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./assets/style.css" />
+  <style>
+    body {
+      background-color: #f8fafc;
+      color: #0f172a;
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      margin: 0;
+      padding: 0;
+    }
+    .admin-nav {
+      background: #ffffff;
+      border-bottom: 1px solid #e2e8f0;
+      padding: 12px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    }
+    .admin-logo-group {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .admin-logo-group img {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+    }
+    .admin-title-box h1 {
+      font-size: 17px;
+      font-weight: 800;
+      margin: 0;
+      color: #0f172a;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .admin-badge {
+      background: #ef4444;
+      color: #ffffff;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 9999px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .admin-subtitle {
+      font-size: 11px;
+      color: #64748b;
+      margin-top: 2px;
+    }
+    .admin-container {
+      max-width: 1280px;
+      margin: 28px auto;
+      padding: 0 20px;
+    }
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .kpi-card {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .kpi-icon {
+      width: 48px;
+      height: 48px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+    }
+    .kpi-info h4 {
+      font-size: 12px;
+      color: #64748b;
+      margin: 0 0 4px 0;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .kpi-info .val {
+      font-size: 26px;
+      font-weight: 800;
+      color: #0f172a;
+    }
+    .panel-card {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      padding: 24px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+      margin-bottom: 24px;
+    }
+    .panel-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 18px;
+      border-bottom: 1px solid #f1f5f9;
+      padding-bottom: 14px;
+    }
+    .panel-header h2 {
+      font-size: 16px;
+      font-weight: 700;
+      margin: 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .admin-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    .admin-table th {
+      background: #f8fafc;
+      color: #475569;
+      font-weight: 600;
+      text-align: left;
+      padding: 12px 14px;
+      border-bottom: 1px solid #e2e8f0;
+    }
+    .admin-table td {
+      padding: 14px;
+      border-bottom: 1px solid #f1f5f9;
+      vertical-align: middle;
+    }
+    .admin-table tr:hover {
+      background: #fbfcfe;
+    }
+    .badge-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 700;
+    }
+    .badge-pending {
+      background: #fef3c7;
+      color: #b45309;
+    }
+    .badge-approved {
+      background: #d1fae5;
+      color: #047857;
+    }
+    .badge-rejected {
+      background: #fee2e2;
+      color: #b91c1c;
+    }
+    .btn-approve {
+      background: #10b981;
+      color: #ffffff;
+      border: none;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-weight: 700;
+      font-size: 12px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      transition: background 0.15s;
+    }
+    .btn-approve:hover {
+      background: #059669;
+    }
+    .btn-reject {
+      background: #fee2e2;
+      color: #b91c1c;
+      border: 1px solid #fca5a5;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-weight: 700;
+      font-size: 12px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      transition: background 0.15s;
+    }
+    .btn-reject:hover {
+      background: #fecaca;
+    }
+    .pin-modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(15, 23, 42, 0.7);
+      backdrop-filter: blur(8px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+    }
+    .pin-card {
+      background: #ffffff;
+      border-radius: 16px;
+      padding: 36px;
+      width: 90%;
+      max-width: 420px;
+      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+      text-align: center;
+    }
+    .pin-icon {
+      font-size: 44px;
+      margin-bottom: 12px;
+    }
+    .pin-title {
+      font-size: 20px;
+      font-weight: 800;
+      margin-bottom: 6px;
+      color: #0f172a;
+    }
+    .pin-desc {
+      font-size: 13px;
+      color: #64748b;
+      margin-bottom: 20px;
+    }
+    .pin-input {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 12px 16px;
+      font-size: 16px;
+      border: 1.5px solid #cbd5e1;
+      border-radius: 8px;
+      text-align: center;
+      letter-spacing: 2px;
+      font-family: inherit;
+      margin-bottom: 16px;
+    }
+    .pin-input:focus {
+      outline: none;
+      border-color: #2563eb;
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+    }
+    .btn-submit-pin {
+      width: 100%;
+      padding: 12px;
+      background: #2563eb;
+      color: #ffffff;
+      border: none;
+      border-radius: 8px;
+      font-weight: 700;
+      font-size: 14px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .btn-submit-pin:hover {
+      background: #1d4ed8;
+    }
+    .cloud-pulse {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: #10b981;
+      font-weight: 700;
+      background: #ecfdf5;
+      padding: 4px 10px;
+      border-radius: 9999px;
+      border: 1px solid #a7f3d0;
+    }
+    .pulse-dot {
+      width: 8px;
+      height: 8px;
+      background: #10b981;
+      border-radius: 50%;
+      animation: pulse 1.8s infinite;
+    }
+    @keyframes pulse {
+      0% { transform: scale(0.95); opacity: 0.9; }
+      50% { transform: scale(1.3); opacity: 1; }
+      100% { transform: scale(0.95); opacity: 0.9; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- PIN Protection Overlay -->
+  <div class="pin-modal-overlay" id="pinOverlay">
+    <div class="pin-card">
+      <div class="pin-icon">🔐</div>
+      <div class="pin-title">Finanthropist ॲडमिन ॲक्सेस</div>
+      <div class="pin-desc">कृपया सुरक्षित ॲडमिन पिन (Admin Security PIN) प्रविष्ट करा:</div>
+      <input type="password" id="adminPinInput" class="pin-input" placeholder="Admin PIN टाका..." autofocus />
+      <button class="btn-submit-pin" id="btnUnlockAdmin">सुरक्षित लॉगिन (Login)</button>
+      <div id="pinErrorMsg" style="color:#ef4444; font-size:12px; font-weight:700; margin-top:12px; display:none;">
+        ⚠️ अमान्य पिन! कृपया बरोबर ॲडमिन पिन प्रविष्ट करा.
+      </div>
+    </div>
+  </div>
+
+  <!-- Admin Header Navbar -->
+  <header class="admin-nav">
+    <div class="admin-logo-group">
+      <img src="./assets/logo.png" alt="Finanthropist Educare Logo" />
+      <div class="admin-title-box">
+        <h1>
+          Finanthropist Educare <span class="admin-badge">Admin Portal</span>
+        </h1>
+        <div class="admin-subtitle">विद्यार्थी मंजुरी व क्लाउड मॅनेजमेंट सूट • Private Suite</div>
+      </div>
+    </div>
+    <div style="display:flex; align-items:center; gap:14px;">
+      <div class="cloud-pulse">
+        <span class="pulse-dot"></span>
+        <span id="cloudStatusText">रिअल-टाईम क्लाउड कनेक्टेड</span>
+      </div>
+      <a href="./index.html" class="action-btn" style="text-decoration:none; padding:8px 14px; background:#f1f5f9; color:#334155; border-radius:8px; font-size:12px; font-weight:700;">
+        📈 ट्रेडिंग टर्मिनलवर जा
+      </a>
+      <button id="btnLogoutAdmin" class="action-btn" style="padding:8px 14px; background:#fee2e2; color:#b91c1c; border:none; border-radius:8px; font-size:12px; font-weight:700; cursor:pointer;">
+        🚪 लॉगआउट
+      </button>
+    </div>
+  </header>
+
+  <!-- Admin Main Dashboard Content -->
+  <main class="admin-container" id="adminMainContent" style="display:none;">
+
+    <!-- KPI Summary Row -->
+    <div class="kpi-grid">
+      <div class="kpi-card">
+        <div class="kpi-icon" style="background:#fef3c7; color:#b45309;">🟡</div>
+        <div class="kpi-info">
+          <h4>प्रलंबित विनंत्या (Pending)</h4>
+          <div class="val" id="kpiPendingCount">0</div>
+        </div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-icon" style="background:#d1fae5; color:#047857;">✅</div>
+        <div class="kpi-info">
+          <h4>मंजूर विद्यार्थी (Approved)</h4>
+          <div class="val" id="kpiApprovedCount">0</div>
+        </div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-icon" style="background:#e0f2fe; color:#0284c7;">👥</div>
+        <div class="kpi-info">
+          <h4>एकूण युजर्स (Total)</h4>
+          <div class="val" id="kpiTotalCount">0</div>
+        </div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-icon" style="background:#f3e8ff; color:#7e22ce;">⭐</div>
+        <div class="kpi-info">
+          <h4>VIP मास्टर कोड</h4>
+          <div class="val" style="font-size:18px; font-family:'JetBrains Mono', monospace; color:#7e22ce;">FINVIP2026</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Panel 1: Pending Student Approvals (Top Priority) -->
+    <div class="panel-card" style="border-left: 4px solid #f59e0b;">
+      <div class="panel-header">
+        <h2>
+          <span>🟡</span> नवीन प्रलंबित प्रवेश विनंत्या (Pending Requests)
+          <span id="badgePendingLive" style="background:#f59e0b; color:#fff; font-size:11px; padding:2px 8px; border-radius:12px; font-weight:700;">0</span>
+        </h2>
+        <div style="font-size:12px; color:#64748b;">
+          विद्यार्थी मोबाईलवरून विनंती पाठवताच सेकंदात येथे आपोआप दिसेल.
+        </div>
+      </div>
+
+      <div style="overflow-x:auto;">
+        <table class="admin-table">
+          <thead>
+            <tr>
+              <th>विद्यार्थ्याचे नाव</th>
+              <th>मोबाईल नंबर</th>
+              <th>नोंदणी वेळ</th>
+              <th>स्थिती</th>
+              <th style="text-align:right;">कारवाई (Action)</th>
+            </tr>
+          </thead>
+          <tbody id="tablePendingBody">
+            <!-- Dynamically populated -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Panel 2: All Users Directory -->
+    <div class="panel-card">
+      <div class="panel-header">
+        <h2><span>👥</span> सर्व नोंदणीकृत विद्यार्थी व युजर्स (All Users)</h2>
+        <div style="display:flex; gap:10px; align-items:center;">
+          <input type="text" id="adminUserSearch" placeholder="🔍 नाव किंवा मोबाईल नंबर शोधा..." style="padding:6px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:12px; width:220px;" />
+          <button id="btnExportUsersCsv" style="background:#f1f5f9; border:1px solid #cbd5e1; padding:6px 12px; border-radius:6px; font-size:12px; font-weight:700; cursor:pointer;">
+            📥 CSV एक्सपोर्ट
+          </button>
+        </div>
+      </div>
+
+      <div style="overflow-x:auto;">
+        <table class="admin-table">
+          <thead>
+            <tr>
+              <th>नाव</th>
+              <th>मोबाईल</th>
+              <th>रोल</th>
+              <th>नोंदणी तारीख</th>
+              <th>स्थिती</th>
+              <th style="text-align:right;">मॅनेज करा</th>
+            </tr>
+          </thead>
+          <tbody id="tableAllUsersBody">
+            <!-- Dynamically populated -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </main>
+
+  <script>
+    // =========================================================================
+    // ADMIN AUTHENTICATION & SSE REAL-TIME ENGINE
+    // =========================================================================
+    const ADMIN_PIN = "Admin@Fin2026";
+    const CLOUD_NTFY_TOPIC = "https://ntfy.sh/fin_auth_hub_2026";
+    const USERS_STORAGE_KEY = "fin_registered_users_v2";
+
+    const DEFAULT_USERS = [
+      { id: "admin_1", name: "Admin (मुख्य व्यवस्थापक)", phone: "9999999999", role: "ADMIN", status: "APPROVED", date: "2026-09-17 10:00" },
+      { id: "demo_1", name: "Demo User", phone: "9876543210", role: "USER", status: "APPROVED", date: "2026-09-17 11:30" },
+      { id: "usr_9359998294", name: "test", phone: "9359998294", role: "USER", status: "PENDING", date: "2026-09-18 16:55" }
+    ];
+
+    function getUsers() {
+      try {
+        const raw = localStorage.getItem(USERS_STORAGE_KEY);
+        if (!raw) {
+          localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(DEFAULT_USERS));
+          return [...DEFAULT_USERS];
+        }
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) && parsed.length > 0 ? parsed : [...DEFAULT_USERS];
+      } catch (e) {
+        return [...DEFAULT_USERS];
+      }
+    }
+
+    function saveUsers(users) {
+      localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
+      renderDashboard();
+    }
+
+    async function broadcastCloudEvent(payload) {
+      try {
+        await fetch(CLOUD_NTFY_TOPIC, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+      } catch (e) {
+        console.warn("Cloud post err:", e);
+      }
+    }
+
+    // 1. PIN Unlock Handling
+    const pinOverlay = document.getElementById('pinOverlay');
+    const adminMainContent = document.getElementById('adminMainContent');
+    const adminPinInput = document.getElementById('adminPinInput');
+    const btnUnlockAdmin = document.getElementById('btnUnlockAdmin');
+    const pinErrorMsg = document.getElementById('pinErrorMsg');
+    const btnLogoutAdmin = document.getElementById('btnLogoutAdmin');
+
+    function checkAuth() {
+      const isAuth = sessionStorage.getItem('fin_admin_authenticated');
+      if (isAuth === 'true') {
+        pinOverlay.style.display = 'none';
+        adminMainContent.style.display = 'block';
+        renderDashboard();
+        initSse();
+      } else {
+        pinOverlay.style.display = 'flex';
+        adminMainContent.style.display = 'none';
+        adminPinInput.focus();
+      }
+    }
+
+    function doLogin() {
+      const pin = adminPinInput.value.trim();
+      if (pin === ADMIN_PIN) {
+        sessionStorage.setItem('fin_admin_authenticated', 'true');
+        pinErrorMsg.style.display = 'none';
+        checkAuth();
+      } else {
+        pinErrorMsg.style.display = 'block';
+        adminPinInput.value = '';
+        adminPinInput.focus();
+      }
+    }
+
+    btnUnlockAdmin.addEventListener('click', doLogin);
+    adminPinInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') doLogin();
+    });
+
+    btnLogoutAdmin.addEventListener('click', () => {
+      sessionStorage.removeItem('fin_admin_authenticated');
+      checkAuth();
+    });
+
+    // 2. Real-time Server-Sent Events (SSE) Listener
+    function initSse() {
+      try {
+        const es = new EventSource(`${CLOUD_NTFY_TOPIC}/sse`);
+        es.onmessage = function (event) {
+          try {
+            const data = JSON.parse(event.data);
+            if (data.message) {
+              const payload = JSON.parse(data.message);
+              handleIncomingCloudPayload(payload);
+            }
+          } catch (e) {}
+        };
+        es.onerror = function () {
+          document.getElementById('cloudStatusText').textContent = "क्लाउड रिकनेक्ट होत आहे...";
+        };
+        es.onopen = function () {
+          document.getElementById('cloudStatusText').textContent = "रिअल-टाईम क्लाउड कनेक्टेड";
+        };
+      } catch (err) {
+        console.warn("SSE init error:", err);
+      }
+    }
+
+    function handleIncomingCloudPayload(payload) {
+      if (!payload || !payload.type) return;
+      const users = getUsers();
+
+      if (payload.type === "REGISTER_REQUEST" && payload.user) {
+        const u = payload.user;
+        const existingIdx = users.findIndex(x => x.phone === u.phone);
+        if (existingIdx >= 0) {
+          users[existingIdx].name = u.name;
+          users[existingIdx].status = "PENDING";
+          users[existingIdx].date = u.date || new Date().toLocaleString('en-IN');
+        } else {
+          users.push({
+            id: u.id || `usr_${Date.now()}`,
+            name: u.name,
+            phone: u.phone,
+            role: "USER",
+            status: "PENDING",
+            date: u.date || new Date().toLocaleString('en-IN')
+          });
+        }
+        saveUsers(users);
+        playPing();
+      } else if (payload.type === "USER_STATUS_UPDATE" && payload.phone) {
+        const existingIdx = users.findIndex(x => x.phone === payload.phone);
+        if (existingIdx >= 0) {
+          users[existingIdx].status = payload.status;
+          saveUsers(users);
+        }
+      }
+    }
+
+    function playPing() {
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const g = ctx.createGain();
+        osc.connect(g);
+        g.connect(ctx.destination);
+        osc.frequency.setValueAtTime(587.33, ctx.currentTime);
+        osc.frequency.setValueAtTime(880.00, ctx.currentTime + 0.15);
+        g.gain.setValueAtTime(0.2, ctx.currentTime);
+        g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.4);
+      } catch (e) {}
+    }
+
+    // 3. User Actions: Approve & Reject
+    window.approveUser = async function(phone) {
+      const users = getUsers();
+      const user = users.find(u => u.phone === phone);
+      if (!user) return;
+      user.status = "APPROVED";
+      saveUsers(users);
+
+      await broadcastCloudEvent({
+        type: "USER_STATUS_UPDATE",
+        phone: user.phone,
+        status: "APPROVED",
+        timestamp: Date.now()
+      });
+      alert(`✅ ${user.name} (${user.phone}) मंजूर करण्यात आला! त्याच्या मोबाईलवर पोर्टल लगेच अनलॉक होईल.`);
+    };
+
+    window.rejectUser = async function(phone) {
+      if (!confirm(`तुम्हाला नक्की या युजरची विनंती रद्द करायची आहे का?`)) return;
+      const users = getUsers();
+      const user = users.find(u => u.phone === phone);
+      if (!user) return;
+      user.status = "REJECTED";
+      saveUsers(users);
+
+      await broadcastCloudEvent({
+        type: "USER_STATUS_UPDATE",
+        phone: user.phone,
+        status: "REJECTED",
+        timestamp: Date.now()
+      });
+    };
+
+    window.deleteUser = function(phone) {
+      if (!confirm(`हा युजर कायमचा काढून टाकायचा आहे का?`)) return;
+      let users = getUsers();
+      users = users.filter(u => u.phone !== phone);
+      saveUsers(users);
+    };
+
+    // 4. Render Admin Dashboard
+    function renderDashboard() {
+      const users = getUsers();
+      const searchVal = (document.getElementById('adminUserSearch')?.value || '').toLowerCase().trim();
+
+      const pendingUsers = users.filter(u => u.status === "PENDING");
+      const approvedUsers = users.filter(u => u.status === "APPROVED");
+
+      // KPIs
+      document.getElementById('kpiPendingCount').textContent = pendingUsers.length;
+      document.getElementById('badgePendingLive').textContent = pendingUsers.length;
+      document.getElementById('kpiApprovedCount').textContent = approvedUsers.length;
+      document.getElementById('kpiTotalCount').textContent = users.length;
+
+      // Table 1: Pending Users
+      const tbPending = document.getElementById('tablePendingBody');
+      if (pendingUsers.length === 0) {
+        tbPending.innerHTML = `<tr><td colspan="5" style="text-align:center; color:#94a3b8; padding:24px;">कोणतीही प्रलंबित विनंती नाही. सर्व विनंत्या मंजूर झालेल्या आहेत!</td></tr>`;
+      } else {
+        tbPending.innerHTML = pendingUsers.map(u => `
+          <tr>
+            <td><strong>${u.name}</strong></td>
+            <td><code style="font-family:'JetBrains Mono'; color:#2563eb;">${u.phone}</code></td>
+            <td style="color:#64748b;">${u.date || '--'}</td>
+            <td><span class="badge-status badge-pending">🟡 PENDING</span></td>
+            <td style="text-align:right;">
+              <button class="btn-approve" onclick="approveUser('${u.phone}')">✅ मंजूर करा (Approve)</button>
+              <button class="btn-reject" style="margin-left:6px;" onclick="rejectUser('${u.phone}')">❌ रद्द करा</button>
+            </td>
+          </tr>
+        `).join('');
+      }
+
+      // Table 2: All Users
+      const tbAll = document.getElementById('tableAllUsersBody');
+      let filtered = users;
+      if (searchVal) {
+        filtered = users.filter(u => u.name.toLowerCase().includes(searchVal) || u.phone.includes(searchVal));
+      }
+
+      tbAll.innerHTML = filtered.map(u => {
+        let badge = `<span class="badge-status badge-pending">🟡 PENDING</span>`;
+        if (u.status === "APPROVED") badge = `<span class="badge-status badge-approved">✅ APPROVED</span>`;
+        if (u.status === "REJECTED") badge = `<span class="badge-status badge-rejected">❌ REJECTED</span>`;
+
+        return `
+          <tr>
+            <td><strong>${u.name}</strong></td>
+            <td><code style="font-family:'JetBrains Mono';">${u.phone}</code></td>
+            <td><span style="font-size:11px; font-weight:700; color:#64748b;">${u.role || 'USER'}</span></td>
+            <td style="color:#64748b;">${u.date || '--'}</td>
+            <td>${badge}</td>
+            <td style="text-align:right;">
+              ${u.status !== 'APPROVED' ? `<button class="btn-approve" style="padding:4px 8px; font-size:11px;" onclick="approveUser('${u.phone}')">✅ मंजूर</button>` : ''}
+              ${u.status !== 'REJECTED' ? `<button class="btn-reject" style="padding:4px 8px; font-size:11px; margin-left:4px;" onclick="rejectUser('${u.phone}')">रद्द</button>` : ''}
+              ${u.role !== 'ADMIN' ? `<button style="background:none; border:none; color:#ef4444; cursor:pointer; font-size:12px; margin-left:6px;" onclick="deleteUser('${u.phone}')" title="Delete">🗑️</button>` : ''}
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    document.getElementById('adminUserSearch')?.addEventListener('input', renderDashboard);
+
+    // CSV Export
+    document.getElementById('btnExportUsersCsv')?.addEventListener('click', () => {
+      const users = getUsers();
+      const csv = "नाव,मोबाईल,रोल,स्थिती,नोंदणी तारीख\n" + users.map(u => `"${u.name}","${u.phone}","${u.role || 'USER'}","${u.status}","${u.date || ''}"`).join("\n");
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `finanthropist_users_${Date.now()}.csv`;
+      a.click();
+    });
+
+    // Start
+    checkAuth();
+  </script>
+</body>
+</html>

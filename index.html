@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="mr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Finanthropist Educare | Unified Trading Platform (Chart • Trade Setup • AAA)</title>
+  
+  <meta name="description" content="Official Finanthropist Educare Real-Time Indian Market Terminal, Heikin Ashi 5M Strategy Scanner & Nifty 200 Candlestick Screener." />
+  <meta name="theme-color" content="#ffffff" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  
+  <link rel="icon" type="image/png" href="./assets/logo.png" />
+  <link rel="apple-touch-icon" href="./assets/logo.png" />
+  <link rel="manifest" href="./manifest.json" />
+
+  <link rel="stylesheet" href="./assets/style.css" />
+  
+  <!-- Standalone High-Speed Canvas Candlestick Engine (Apache ECharts) -->
+  <script src="./assets/echarts.min.js"></script>
+  <script>
+    if (typeof echarts === "undefined") {
+      document.write('<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"><\/script>');
+    }
+  </script>
+
+  <!-- Core Data Feeds -->
+  <script src="./assets/mcx_data.js"></script>
+  <script src="./assets/nifty500_data.js"></script>
+  <script src="./assets/real_market_cache.js"></script>
+  <script>
+    if (typeof NIFTY_500_STOCKS !== "undefined") window.NIFTY_500_STOCKS = NIFTY_500_STOCKS;
+    if (typeof MCX_COMMODITIES !== "undefined") window.MCX_COMMODITIES = MCX_COMMODITIES;
+    if (typeof REAL_MARKET_CACHE !== "undefined") window.REAL_MARKET_CACHE = REAL_MARKET_CACHE;
+  </script>
+
+  <!-- Sub-Modules & Localization -->
+  <script src="./assets/cubeplus_feed.js"></script>
+  <script src="./assets/i18n.js"></script>
+  <script src="./assets/trade_setup.js"></script>
+  <script src="./assets/aaa_screener.js"></script>
+</head>
+<body>
+
+  <!-- =====================================================================
+       Application Top Header
+       ===================================================================== -->
+  <header class="app-header">
+    <div class="brand-section" id="brand-header-link" title="Finanthropist Educare Pvt Ltd">
+      <div class="brand-logo-wrap">
+        <img src="./assets/logo.png" alt="Logo" class="brand-logo" />
+      </div>
+      <div class="brand-text">
+        <div class="brand-title">
+          Finanthropist Educare <span class="brand-badge">2.0</span>
+        </div>
+        <div class="brand-subtitle">Pvt Ltd &bull; Real-Time Trading Suite</div>
+      </div>
+    </div>
+
+    <!-- 3 Main Navigation Tabs: Chart | Trade Setup | AAA -->
+    <nav class="nav-tabs-bar" id="mainNavTabs">
+      <button class="nav-tab-btn active" data-view="chart">
+        <span class="tab-icon">📊</span>
+        <span data-i18n="nav_chart">चार्ट</span>
+      </button>
+      <button class="nav-tab-btn" data-view="trade-setup">
+        <span class="tab-icon">🎯</span>
+        <span data-i18n="nav_trade_setup">ट्रेड सेटअप</span>
+      </button>
+      <button class="nav-tab-btn" data-view="aaa">
+        <span class="tab-icon">⚡</span>
+        <span data-i18n="nav_aaa">AAA स्क्रिनर</span>
+      </button>
+    </nav>
+
+    <!-- Quick Index & Commodity Chips -->
+    <div class="indices-bar" id="headerIndicesBar">
+      <div class="index-chip active" data-key="nifty" data-name="NIFTY 50">
+        <span class="dot"></span> NIFTY 50
+      </div>
+      <div class="index-chip" data-key="banknifty" data-name="BANK NIFTY">
+        <span class="dot"></span> BANK NIFTY
+      </div>
+      <div class="index-chip" data-key="sensex" data-name="SENSEX">
+        <span class="dot"></span> SENSEX
+      </div>
+      <div class="index-chip" data-key="midcap" data-name="MIDCAP NIFTY">
+        <span class="dot"></span> MIDCAP NIFTY
+      </div>
+      <div class="index-chip" data-key="finnifty" data-name="FIN NIFTY">
+        <span class="dot"></span> FIN NIFTY
+      </div>
+      <div class="index-chip" data-key="gold" data-name="GOLD">
+        <span class="dot" style="background:#d97706;"></span> GOLD (MCX)
+      </div>
+      <div class="index-chip" data-key="crudeoil" data-name="CRUDEOIL">
+        <span class="dot" style="background:#475569;"></span> CRUDE OIL
+      </div>
+    </div>
+
+    <!-- Header Search Bar -->
+    <div class="header-search-wrap">
+      <input type="text" id="header-stock-search" class="header-stock-search" placeholder="🔍 स्टॉक्स / MCX सर्च करा..." />
+    </div>
+
+    <!-- Header Actions -->
+    <div class="header-actions">
+      <!-- Market Live Status -->
+      <div id="market-status" class="market-status">
+        <span class="pulse-dot"></span>
+        <span id="marketStatusLabel">LIVE MARKET</span>
+      </div>
+
+      <!-- User Chip -->
+      <div class="user-badge-chip" id="userBadgeChip" style="display:none;" title="Logged In User">
+        <span>👤</span>
+        <span id="userBadgeName">User</span>
+      </div>
+
+      <!-- Bilingual Language Switcher -->
+      <div class="lang-switch-wrap" id="langSwitchWrap">
+        <button class="lang-btn active" id="btnLangMr" data-lang="mr" title="मराठी भाषा निवडा">मराठी</button>
+        <button class="lang-btn" id="btnLangEn" data-lang="en" title="Switch to English">ENG</button>
+      </div>
+
+      <!-- Fullscreen Button -->
+      <button class="action-btn hide-mobile" id="btn-fullscreen" title="Toggle Fullscreen">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+      </button>
+
+      <!-- Watchlist Toggle Button (Chart View only) -->
+      <button class="action-btn" id="toggle-sidebar-btn" title="Toggle Watchlist">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+        <span class="hide-mobile">Watchlist</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- =====================================================================
+       Multi-View Wrapper
+       ===================================================================== -->
+  <div class="views-wrapper">
+
+    <!-- -------------------------------------------------------------------
+         VIEW 1: CHART & WATCHLIST
+         ------------------------------------------------------------------- -->
+    <section class="app-view active" id="view-chart">
+      <div class="main-container">
+        <!-- Main Charting Work Area -->
+        <div class="charts-area">
+          <div class="chart-cell">
+            <!-- Chart Header Toolbar -->
+            <div class="chart-header-bar">
+              <div class="chart-symbol-info">
+                <span class="symbol-badge" id="active-stock-badge">NSE</span>
+                <span class="chart-symbol-name" id="active-stock-title">NIFTY 50</span>
+                <span class="chart-live-price" id="active-stock-price">₹23,315.64</span>
+                <span class="chart-live-change ticker-up" id="active-stock-change">+0.19%</span>
+                
+                <!-- Live Candle Bar Countdown Pill -->
+                <div class="candle-countdown-chip" id="candle-countdown-chip" title="Remaining time until current candle bar closes">
+                  <span class="countdown-pulse"></span>
+                  <span class="countdown-label">BAR CLOSE:</span>
+                  <strong id="candle-countdown-val">04:59</strong>
+                </div>
+
+                <!-- Quick Add to Watchlist Button -->
+                <button class="quick-add-wl-btn" id="btn-quick-add-stock" title="Add active stock to custom watchlist">
+                  ⭐ + Watchlist
+                </button>
+              </div>
+
+              <!-- Timeframe Selector -->
+              <div class="timeframe-group">
+                <button class="tf-btn" data-tf="1">1m</button>
+                <button class="tf-btn active" data-tf="5">5m</button>
+                <button class="tf-btn" data-tf="15">15m</button>
+                <button class="tf-btn" data-tf="60">1h</button>
+                <button class="tf-btn" data-tf="D">1D</button>
+              </div>
+
+              <!-- Chart Style Selector -->
+              <div class="chart-type-group">
+                <button class="chart-type-btn active" data-type="candlestick" title="Standard Candlestick" data-i18n="candle_standard">कॅन्डल्स</button>
+                <button class="chart-type-btn" data-type="heikinashi" title="Heikin Ashi Candlestick" data-i18n="candle_heikin">हेकिन आशी</button>
+                <button class="chart-type-btn" data-type="line" title="Line Chart" data-i18n="candle_line">लाईन</button>
+              </div>
+
+              <!-- Indicator Toggles -->
+              <div class="indicators-group" style="display:flex; gap:4px;">
+                <button class="indicator-toggle-btn active" data-ind="ma" title="Toggle Moving Average 20">MA(20)</button>
+                <button class="indicator-toggle-btn active" data-ind="rsi" title="Toggle RSI Indicator">RSI(7)</button>
+                <button class="indicator-toggle-btn active" data-ind="vol" title="Toggle Volume Bars">Volume</button>
+              </div>
+
+              <!-- Chart Zoom & Pan Controls -->
+              <div class="chart-zoom-group" title="चार्ट हलवा व कॅन्डल्स लहान/मोठ्या करा (Zoom & Pan)">
+                <button class="chart-ctrl-btn" id="btnChartZoomIn" title="झूम इन / कॅन्डल मोठी करा (Zoom In)">🔍+</button>
+                <button class="chart-ctrl-btn" id="btnChartZoomOut" title="झूम आऊट / कॅन्डल लहान करा (Zoom Out)">🔍−</button>
+                <button class="chart-ctrl-btn" id="btnChartPanLeft" title="मागील कॅन्डल्स पहा (Pan Left)">◀</button>
+                <button class="chart-ctrl-btn" id="btnChartPanRight" title="पुढील कॅन्डल्स पहा (Pan Right)">▶</button>
+                <button class="chart-ctrl-btn" id="btnChartReset" title="मूळ स्थितीत आणा (Reset)">🔄</button>
+              </div>
+
+              <!-- Direct Broker & External Real-Time Links -->
+              <div class="broker-links-group" style="display:flex; gap:6px; margin-left:auto;">
+                <a href="https://tradinglead.in/" target="_blank" rel="noopener noreferrer" class="chart-ctrl-btn" style="text-decoration:none; background:#f5f3ff; color:#6d28d9; border-color:#ddd6fe; font-weight:700; display:flex; align-items:center; gap:4px; padding:4px 8px; font-size:11px;" title="Open TradingLead Live Chart">
+                  ⚡ TradingLead
+                </a>
+                <a href="https://cubeplus.tradejini.com/" target="_blank" rel="noopener noreferrer" class="chart-ctrl-btn" style="text-decoration:none; background:#ecfdf5; color:#065f46; border-color:#a7f3d0; font-weight:700; display:flex; align-items:center; gap:4px; padding:4px 8px; font-size:11px;" title="Tradejini CubePlus Live TradingView Chart">
+                  ⚡ Tradejini CubePlus
+                </a>
+                <a href="https://charting.nseindia.com/" target="_blank" rel="noopener noreferrer" class="chart-ctrl-btn" style="text-decoration:none; background:#eff6ff; color:#1d4ed8; border-color:#bfdbfe; font-weight:700; display:flex; align-items:center; gap:4px; padding:4px 8px; font-size:11px;" title="Official NSE Live Charting System">
+                  🌐 NSE Chart
+                </a>
+              </div>
+            </div>
+
+            <!-- Status Strip (OHLC & Indicator Values) -->
+            <div class="chart-status-strip">
+              <div class="ohlc-display" id="chart-ohlc-display">
+                <span class="ohlc-dt-tag" style="background:#eff6ff; color:#1d4ed8; padding:2px 8px; border-radius:4px; border:1px solid #bfdbfe; font-weight:700; font-size:11px;">
+                  📅 <strong id="val-date">23-Sep-2026</strong> ⏰ <strong id="val-time">--:--</strong>
+                </span>
+                <span>O: <strong id="val-open">--</strong></span>
+                <span>H: <strong id="val-high">--</strong></span>
+                <span>L: <strong id="val-low">--</strong></span>
+                <span>C: <strong id="val-close">--</strong></span>
+                <span id="rsi-val-wrap" style="color:#7c3aed; font-weight:700;">RSI(7): <strong id="val-rsi">--</strong></span>
+                <span id="rsi-ma-wrap" style="color:#2563eb; font-weight:700;">MA(14): <strong id="val-rsi-ma">--</strong></span>
+              </div>
+            </div>
+
+            <!-- High Performance Canvas Chart Area -->
+            <div class="chart-body" id="chartBodyContainer" style="display:flex; position:relative; overflow:hidden;">
+              <!-- TradingView-Style Left Drawing Toolbar -->
+              <div class="chart-left-toolbar" id="chartLeftToolbar">
+                <button class="draw-tool-btn active" data-tool="crosshair" title="कर्सर / Crosshair">✛</button>
+                <button class="draw-tool-btn" data-tool="trendline" title="ट्रेंडलाईन / Trendline">╱</button>
+                <button class="draw-tool-btn" data-tool="horizline" title="सपोर्ट व रेझिस्टन्स रेषा (Horizontal Line)">─</button>
+                <button class="draw-tool-btn" data-tool="measure" title="प्राइस मोजमाप (Measure Range)">📏</button>
+                <button class="draw-tool-btn" id="btnChartClearDraw" title="काढलेल्या रेषा पुसा (Clear Drawings)">🗑️</button>
+                <div style="flex:1;"></div>
+                <button class="draw-tool-btn" id="btnChartSnapshot" title="चार्ट स्क्रीनशॉट सेव्ह करा (Save Image)">📸</button>
+                <button class="draw-tool-btn" id="btnChartFullscreen" title="फुलस्क्रीन व्ह्यू (Fullscreen ⛶)">⛶</button>
+              </div>
+              <div id="echarts-candlestick-container" class="chart-canvas-container" style="flex:1; width:calc(100% - 40px);"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Watchlist Sidebar -->
+        <aside class="watchlist-sidebar" id="watchlist-sidebar">
+          <div class="sidebar-header">
+            <div class="sidebar-title-row">
+              <span class="sidebar-title">मार्केट वॉचलिस्ट (Watchlist)</span>
+              <button class="btn-new-wl" id="btn-create-new-wl" title="नवीन वॉचलिस्ट तयार करा">
+                ➕ New List
+              </button>
+            </div>
+            
+            <div class="wl-select-wrapper">
+              <select id="watchlist-select" class="wl-dropdown">
+                <option value="indices">🏛️ Major Indices (Nifty, Bank, Sensex, Midcap, FinNifty)</option>
+                <option value="default">📊 All 500 Stocks (Default)</option>
+                <option value="mcx">🪙 MCX Commodities</option>
+                <!-- Custom Watchlists will be added here dynamically -->
+              </select>
+            </div>
+
+            <!-- Custom Watchlist Helper / Delete Banner -->
+            <div id="wl-custom-tools" style="display:none; padding:6px 8px; background:#f8fafc; border-radius:6px; margin-bottom:6px; border:1px solid var(--border-subtle); justify-content:space-between; align-items:center;">
+              <span style="font-size:11px; font-weight:800; color:#2563eb;" id="wl-custom-name-label">⭐ My Watchlist</span>
+              <button class="action-btn" id="btnDeleteCurrentWl" style="font-size:10px; color:#ef4444; border:none; background:none; cursor:pointer; font-weight:700;" title="ही वॉचलिस्ट डिलीट करा">
+                🗑️ डिलीट यादी
+              </button>
+            </div>
+
+            <input type="text" id="sidebar-stock-search" class="sidebar-search-input" placeholder="🔍 स्टॉक / इंडेक्स शोधा (+ वर क्लिक करून जोडा)..." />
+          </div>
+
+          <!-- Watchlist Stock Rows -->
+          <div class="watchlist-list" id="watchlist-list">
+            <!-- Dynamically populated by app.js -->
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- -------------------------------------------------------------------
+         VIEW 2: TRADE SETUP (STOCK STRATEGY ALERT SCANNER)
+         ------------------------------------------------------------------- -->
+    <section class="app-view" id="view-trade-setup">
+      <!-- Live Indices Ribbon -->
+      <div class="ts-indices-grid" id="tsIndicesRibbon">
+        <!-- Rendered dynamically by trade_setup.js -->
+      </div>
+
+      <!-- Strategy Rule Banner -->
+      <div class="ts-rules-card">
+        <div class="ts-rules-icon">🎯</div>
+        <div>
+          <div class="ts-rules-title">५-मिनिट Heikin Ashi रिव्हर्सल & CC (Confirmation Candle) सेटअप</div>
+          <div class="ts-rules-sub">
+            नियम: आधीचा लाल ट्रेंड + हिरवी रिव्हर्सल कॅन्डल विथ Flat Bottom (No Lower Wick) = 🟢 BUY कॉल सेटअप. <br>
+            आधीचा हिरवा ट्रेंड + लाल रिव्हर्सल कॅन्डल विथ Flat Top (No Upper Wick) = 🔴 SELL पुट सेटअप.
+          </div>
+        </div>
+      </div>
+
+      <!-- Controls Toolbar -->
+      <div class="ts-toolbar">
+        <div class="ts-filter-tabs" id="tsFilterTabs">
+          <button class="ts-tab-btn active" data-filter="ALL">सर्व (<span id="tsCountAll">0</span>)</button>
+          <button class="ts-tab-btn" data-filter="BUY">🟢 BUY Call (<span id="tsCountBuy">0</span>)</button>
+          <button class="ts-tab-btn" data-filter="SELL">🔴 SELL Put (<span id="tsCountSell">0</span>)</button>
+          <button class="ts-tab-btn" data-filter="INDEX">इंडायसेस (<span id="tsCountIndex">0</span>)</button>
+          <button class="ts-tab-btn" data-filter="STOCKS">स्टॉक्स व MCX (<span id="tsCountStock">0</span>)</button>
+        </div>
+
+        <div style="flex:1; max-width:260px;">
+          <input type="text" id="tsInputSearch" class="form-input" placeholder="🔍 शोधा (उदा. NIFTY, MAZDOCK, GOLD)..." />
+        </div>
+
+        <div class="ts-actions-group">
+          <button id="tsBtnAudioToggle" class="ts-btn-secondary active">
+            <span>🔊</span>
+            <span class="ts-audio-text">ध्वनी चालू</span>
+          </button>
+          <button id="tsBtnNotifToggle" class="ts-btn-secondary">
+            <span>🔔</span>
+            <span class="ts-notif-text">नोटिफिकेशन</span>
+          </button>
+          <button id="tsBtnScanNow" class="ts-btn-primary">
+            <span>⚡</span>
+            <span>आत्ता स्कॅन करा</span>
+          </button>
+          <button id="tsBtnTestAlert" class="ts-btn-secondary" style="background:#eff6ff; color:#1d4ed8; border-color:#bfdbfe;">
+            <span>🔔 डेमो ॲलर्ट</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Signals Grid -->
+      <div class="ts-signals-grid" id="tsSignalsContainer">
+        <!-- Rendered dynamically by trade_setup.js -->
+      </div>
+    </section>
+
+    <!-- -------------------------------------------------------------------
+         VIEW 3: AAA (NIFTY 200 CANDLESTICK SCREENER)
+         ------------------------------------------------------------------- -->
+    <section class="app-view" id="view-aaa">
+      <!-- Strategy Rules Grid -->
+      <div class="aaa-rules-grid">
+        <div class="aaa-rule-box aaa-buy-rule">
+          <div class="aaa-rule-header">
+            <span class="aaa-pill aaa-pill-buy">BUY SETUP</span>
+            <h3 style="color:#065f46;">खरेदी नियम (BUY Rules)</h3>
+          </div>
+          <ul>
+            <li><strong>ट्रेंड:</strong> कमीत कमी <strong>४ सलग Red कॅन्डल्स</strong> चा डाउनट्रेंड.</li>
+            <li><strong>पॅटर्न्स:</strong> Bullish Harami, Bullish Engulfing, Piercing Line, Morning Star.</li>
+            <li><strong>Entry:</strong> शेवटच्या Green कॅन्डलची <strong>Open Price</strong> | <strong>Stop Loss:</strong> मागील कॅन्डलचा <strong>Low</strong>.</li>
+          </ul>
+        </div>
+
+        <div class="aaa-rule-box aaa-sell-rule">
+          <div class="aaa-rule-header">
+            <span class="aaa-pill aaa-pill-sell">SELL SETUP</span>
+            <h3 style="color:#991b1b;">विक्री नियम (SELL Rules)</h3>
+          </div>
+          <ul>
+            <li><strong>ट्रेंड:</strong> कमीत कमी <strong>४ सलग Green कॅन्डल्स</strong> चा अपट्रेंड.</li>
+            <li><strong>पॅटर्न्स:</strong> Bearish Harami, Bearish Engulfing, Dark Cloud Cover, Evening Star.</li>
+            <li><strong>Entry:</strong> शेवटच्या Red कॅन्डलची <strong>Close Price</strong> | <strong>Stop Loss:</strong> मागील कॅन्डलचा <strong>High</strong>.</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- KPI Stat Cards -->
+      <div class="aaa-stats-row">
+        <div class="aaa-stat-card">
+          <div class="aaa-stat-title">एकूण स्टॉक्स (Universe)</div>
+          <div class="aaa-stat-val" id="aaaStatTotalStocks">200</div>
+        </div>
+        <div class="aaa-stat-card">
+          <div class="aaa-stat-title" style="color:#065f46;">खरेदी सिग्नल्स (BUY)</div>
+          <div class="aaa-stat-val" style="color:#065f46;" id="aaaStatBuySignals">0</div>
+        </div>
+        <div class="aaa-stat-card">
+          <div class="aaa-stat-title" style="color:#991b1b;">विक्री सिग्नल्स (SELL)</div>
+          <div class="aaa-stat-val" style="color:#991b1b;" id="aaaStatSellSignals">0</div>
+        </div>
+        <div class="aaa-stat-card">
+          <div class="aaa-stat-title">शेवटचे स्कॅन (Last Scan)</div>
+          <div class="aaa-stat-val" style="font-size:16px; margin-top:6px;" id="aaaStatLastScan">--:--</div>
+        </div>
+      </div>
+
+      <!-- Controls & Filter Bar -->
+      <div class="aaa-controls-bar">
+        <div class="aaa-seg-group">
+          <button class="aaa-seg-btn active" data-type="ALL">सर्व सिग्नल्स</button>
+          <button class="aaa-seg-btn" data-type="BUY">🟢 BUY</button>
+          <button class="aaa-seg-btn" data-type="SELL">🔴 SELL</button>
+        </div>
+
+        <select id="aaaPatternFilter" class="aaa-filter-select">
+          <option value="">सर्व पॅटर्न्स (All Patterns)</option>
+          <option value="Bullish Harami">Bullish Harami</option>
+          <option value="Bullish Engulfing">Bullish Engulfing</option>
+          <option value="Piercing Line">Piercing Line</option>
+          <option value="Bearish Harami">Bearish Harami</option>
+          <option value="Bearish Engulfing">Bearish Engulfing</option>
+          <option value="Dark Cloud Cover">Dark Cloud Cover</option>
+        </select>
+
+        <select id="aaaLookbackFilter" class="aaa-filter-select">
+          <option value="3">मागील ३ दिवस (3 Days)</option>
+          <option value="5" selected>मागील ५ दिवस (5 Days)</option>
+          <option value="10">मागील १० दिवस (10 Days)</option>
+        </select>
+
+        <select id="aaaTrendFilter" class="aaa-filter-select">
+          <option value="3">३+ कॅन्डल्स ट्रेंड</option>
+          <option value="4" selected>४+ कॅन्डल्स ट्रेंड (Standard)</option>
+          <option value="5">५+ कॅन्डल्स ट्रेंड (Strong)</option>
+        </select>
+
+        <div style="flex:1; max-width:220px;">
+          <input type="text" id="aaaSearchInput" class="form-input" placeholder="🔍 स्टॉक शोधा..." />
+        </div>
+
+        <button id="aaaBtnScanNow" class="ts-btn-primary">
+          <span>⚡</span>
+          <span>आता स्कॅन करा</span>
+        </button>
+      </div>
+
+      <!-- Signals Table -->
+      <div class="aaa-table-wrapper">
+        <table class="aaa-table">
+          <thead>
+            <tr>
+              <th>स्टॉक सिम्बॉल</th>
+              <th>प्रकार</th>
+              <th>कॅन्डलस्टिक पॅटर्न</th>
+              <th>ट्रेंड स्ट्रेंग्थ</th>
+              <th>एन्ट्री (Entry)</th>
+              <th>स्टॉप लॉस (SL)</th>
+              <th>टार्गेट १ (1:1.5)</th>
+              <th>टार्गेट २ (1:2.5)</th>
+              <th>जोखीम (Risk)</th>
+              <th>कृती</th>
+            </tr>
+          </thead>
+          <tbody id="aaaSignalsTableBody">
+            <!-- Rendered dynamically by aaa_screener.js -->
+          </tbody>
+        </table>
+        <div id="aaaEmptyState" class="ts-empty-state" style="display:none; padding:30px;">
+          <h3>सध्याच्या फिल्टर्सनुसार कोणताही सिग्नल मिळालेला नाही</h3>
+          <p>कृपया वरील फिल्टर्स बदलून पुन्हा तपासा किंवा स्कॅन करा.</p>
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- =====================================================================
+       AUTHENTICATION & ADMIN MODALS
+       ===================================================================== -->
+
+  <!-- 1. User Registration / Login Modal -->
+  <div class="modal-overlay" id="authModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <img src="./assets/logo.png" style="width:28px; height:28px;" />
+          <span class="modal-title">लॉगिन / नोंदणी विनंती (Portal Access)</span>
+        </div>
+      </div>
+      <div class="modal-body">
+        <p style="font-size:12px; color:var(--text-secondary);">
+          Finanthropist Educare च्या अधिकृत ट्रेडिंग प्लॅटफॉर्मवर आपले स्वागत आहे. पोर्टल ॲक्सेस करण्यासाठी कृपया आपली माहिती भरा.
+        </p>
+
+        <div class="form-group">
+          <label class="form-label">पूर्ण नाव (Full Name) *</label>
+          <input type="text" id="authInputName" class="form-input" placeholder="उदा. राहुल शर्मा" required />
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">मोबाईल नंबर (Mobile Number) *</label>
+          <input type="tel" id="authInputPhone" class="form-input" placeholder="उदा. 9822012345" maxlength="10" required />
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">ईमेल आयडी (Email ID) *</label>
+          <input type="email" id="authInputEmail" class="form-input" placeholder="उदा. rahul@gmail.com" required />
+        </div>
+
+        <button class="btn-form-submit" id="btnSubmitAuth">
+          लॉगिन / ॲक्सेस विनंती पाठवा
+        </button>
+
+        <div style="text-align:center; margin-top:8px; font-size:11px;">
+          <a href="javascript:void(0)" id="linkHaveVipCode" style="color:#2563eb; text-decoration:none; font-weight:700;">
+            🔑 व्हीआयपी अप्रूव्हल कोड आहे का?
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. Pending Approval Screen Modal -->
+  <div class="modal-overlay" id="pendingApprovalModal">
+    <div class="modal-card" style="text-align:center;">
+      <div class="modal-body" style="padding:30px 24px; gap:16px;">
+        <div style="font-size:44px;">⏳</div>
+        <h2 style="font-size:17px; font-weight:800; color:var(--text-primary);">तुमची विनंती मंजुरीसाठी पाठवली आहे!</h2>
+        
+        <div style="background:#f8fafc; border:1px solid var(--border-subtle); padding:12px; border-radius:8px; font-size:12px; text-align:left;">
+          <div>नाव: <strong id="pendingName">--</strong></div>
+          <div>मोबाईल: <strong id="pendingPhone">--</strong></div>
+          <div>स्टेटस: <span style="color:#d97706; font-weight:800;">🟡 PENDING ADMIN APPROVAL</span></div>
+        </div>
+
+        <p style="font-size:12px; color:var(--text-secondary); line-height:1.5;">
+          ॲडमिनकडून मंजुरी (Approval) मिळताच पोर्टल आपोआप सुरु होईल. 
+          <br>तुम्हाला ॲडमिनकडून <strong>१-क्लिक व्हीआयपी की (VIP Unlock Key)</strong> मिळाली असल्यास खाली प्रविष्ट करा:
+        </p>
+
+        <div style="display:flex; gap:6px;">
+          <input type="text" id="inputVipCode" class="form-input" placeholder="VIP Unlock Key टाका..." />
+          <button class="ts-btn-primary" id="btnApplyVipCode" style="white-space:nowrap;">
+            अनलॉक करा
+          </button>
+        </div>
+
+        <div style="font-size:11px; color:var(--text-muted);">
+          स्टेटस दर ५ सेकंदांनी आपोआप तपासले जात आहे...
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+
+  <!-- 4. Trade Setup Alert Popup Modal -->
+  <div class="modal-overlay" id="tsAlertModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <span class="modal-title" id="tsModalType">🟢 BUY कॉल अलर्ट</span>
+        <button class="modal-close-btn" onclick="TradeSetupModule.closeSignalModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div style="text-align:center; padding:10px 0;">
+          <h2 id="tsModalSymbol" style="font-size:22px; font-weight:800;">NIFTY 50</h2>
+          <div style="font-size:13px; color:#2563eb; font-weight:800; margin-top:4px;">
+            शिफारस: <span id="tsModalATM">--</span>
+          </div>
+        </div>
+        <div class="ts-card-grid">
+          <div class="ts-cell"><span class="ts-cell-label">एन्ट्री भाव:</span><strong class="ts-cell-val" id="tsModalEntry">--</strong></div>
+          <div class="ts-cell"><span class="ts-cell-label">स्टॉप लॉस:</span><strong class="ts-cell-val text-danger" id="tsModalSL">--</strong></div>
+          <div class="ts-cell"><span class="ts-cell-label">टार्गेट:</span><strong class="ts-cell-val text-success" id="tsModalTgt">--</strong></div>
+        </div>
+        <button class="btn-form-submit" onclick="TradeSetupModule.closeSignalModal()">समजले (Close)</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 5. Heikin Ashi Chart Modal -->
+  <div class="modal-overlay" id="tsChartModal">
+    <div class="modal-card modal-card-lg">
+      <div class="modal-header">
+        <div>
+          <div class="modal-title" id="tsChartTitle">5M Heikin Ashi Setup</div>
+          <div style="font-size:11px; color:var(--text-secondary);" id="tsChartSubtitle">Setup Info</div>
+        </div>
+        <button class="modal-close-btn" onclick="TradeSetupModule.closeChartModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div style="width:100%; height:380px; position:relative;">
+          <canvas id="tsHaCanvas"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 6. AAA Screener Candlestick Modal -->
+  <div class="modal-overlay" id="aaaChartModal">
+    <div class="modal-card modal-card-lg">
+      <div class="modal-header">
+        <div>
+          <div class="modal-title" id="aaaModalSymbol">Candlestick Pattern Chart</div>
+          <div style="font-size:11px; color:var(--text-secondary);" id="aaaModalSubtitle">Pattern Info</div>
+        </div>
+        <button class="modal-close-btn" onclick="AAAScreenerModule.closeChartModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div style="width:100%; height:360px; position:relative;">
+          <canvas id="aaaCanvas"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 7. Create Watchlist Modal -->
+  <div class="modal-overlay" id="createWlModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <span class="modal-title">नवीन वॉचलिस्ट तयार करा</span>
+        <button class="modal-close-btn" id="btnCloseCreateWl">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label">वॉचलिस्टचे नाव द्या:</label>
+          <input type="text" id="inputNewWlName" class="form-input" placeholder="उदा. My Favorites, Swing Trading, Top Tech..." />
+        </div>
+        <button class="btn-form-submit" id="btnSubmitNewWl">तयार करा (Create)</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 8. Add Stock To Watchlist Picker Modal -->
+  <div class="modal-overlay" id="addToWlModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <span class="modal-title">वॉचलिस्टमध्ये जोडा</span>
+        <button class="modal-close-btn" id="btnCloseAddToWl">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div style="font-size:14px; margin-bottom:12px; padding:10px; background:#f8fafc; border-radius:6px; border:1px solid var(--border-subtle);">
+          स्टॉक: <strong id="addToWlStockName" style="color:#2563eb;">--</strong>
+        </div>
+        <div class="form-group">
+          <label class="form-label">कोणत्या वॉचलिस्टमध्ये जोडायचे?</label>
+          <select id="selectTargetWatchlist" class="form-input" style="font-size:13px; font-weight:700;">
+            <!-- Populated dynamically -->
+          </select>
+        </div>
+        <div style="display:flex; gap:8px; margin-top:8px;">
+          <button class="btn-form-submit" id="btnConfirmAddToWl" style="flex:1;">जोडा (Add Stock)</button>
+          <button class="action-btn" id="btnCreateWlFromAdd" style="background:#f1f5f9; padding:8px 14px; border:1px solid var(--border-subtle); border-radius:6px; font-weight:700; cursor:pointer; font-size:12px; white-space:nowrap;">
+            ➕ नवीन यादी
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Core Main Application Logic -->
+  <script src="./assets/app.js"></script>
+</body>
+</html>
