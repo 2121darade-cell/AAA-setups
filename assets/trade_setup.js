@@ -95,23 +95,32 @@ const TradeSetupModule = (function () {
   function convertToHeikinAshi(rawCandles) {
     if (!rawCandles || rawCandles.length === 0) return [];
     const ha = [];
+    let prevHaOpen = rawCandles[0].open;
+    let prevHaClose = rawCandles[0].close;
+
     for (let i = 0; i < rawCandles.length; i++) {
       const c = rawCandles[i];
-      const haClose = (c.open + c.high + c.low + c.close) / 4;
-      let haOpen;
-      if (i === 0) {
-        haOpen = (c.open + c.close) / 2;
-      } else {
-        haOpen = (ha[i - 1].HA_Open + ha[i - 1].HA_Close) / 2;
-      }
-      const haHigh = Math.max(c.high, haOpen, haClose);
-      const haLow = Math.min(c.low, haOpen, haClose);
-      const isGreen = haClose >= haOpen;
-      const body = Math.abs(haClose - haOpen);
-      const lowerWick = Math.min(haOpen, haClose) - haLow;
-      const upperWick = haHigh - Math.max(haOpen, haClose);
-      const noLowerWick = lowerWick <= (body * 0.10) || lowerWick <= 0.5;
-      const noUpperWick = upperWick <= (body * 0.10) || upperWick <= 0.5;
+      const rawHaClose = (c.open + c.high + c.low + c.close) / 4;
+      const rawHaOpen = i === 0 ? (c.open + c.close) / 2 : (prevHaOpen + prevHaClose) / 2;
+      const rawHaHigh = Math.max(c.high, rawHaOpen, rawHaClose);
+      const rawHaLow = Math.min(c.low, rawHaOpen, rawHaClose);
+      prevHaOpen = rawHaOpen;
+      prevHaClose = rawHaClose;
+
+      const haOpen = Number(rawHaOpen.toFixed(2));
+      const haHigh = Number(rawHaHigh.toFixed(2));
+      const haLow = Number(rawHaLow.toFixed(2));
+      const haClose = Number(rawHaClose.toFixed(2));
+
+      const isGreen = haClose > haOpen;
+      const isRed = haClose < haOpen;
+      const body = Number(Math.abs(haClose - haOpen).toFixed(2));
+      const range = Math.max(Number((haHigh - haLow).toFixed(2)), 0.01);
+      const lowerWick = Number((Math.min(haOpen, haClose) - haLow).toFixed(2));
+      const upperWick = Number((haHigh - Math.max(haOpen, haClose)).toFixed(2));
+
+      const noLowerWick = isGreen && (body / range) >= 0.20 && lowerWick <= body * 0.03;
+      const noUpperWick = isRed && (body / range) >= 0.20 && upperWick <= body * 0.03;
 
       ha.push({
         Time: c.time || `Bar ${i + 1}`,
@@ -120,10 +129,10 @@ const TradeSetupModule = (function () {
         High: c.high,
         Low: c.low,
         Close: c.close,
-        HA_Open: Number(haOpen.toFixed(2)),
-        HA_High: Number(haHigh.toFixed(2)),
-        HA_Low: Number(haLow.toFixed(2)),
-        HA_Close: Number(haClose.toFixed(2)),
+        HA_Open: haOpen,
+        HA_High: haHigh,
+        HA_Low: haLow,
+        HA_Close: haClose,
         IsGreen: isGreen,
         NoLowerWick: noLowerWick,
         NoUpperWick: noUpperWick
@@ -134,11 +143,13 @@ const TradeSetupModule = (function () {
 
   function calculateATM(symbol, price) {
     const p = Number(price);
-    const sym = symbol.toUpperCase();
+    const sym = symbol.toUpperCase().trim();
     let step = 50;
-    if (sym.includes('BANKNIFTY')) step = 100;
-    else if (sym.includes('SENSEX')) step = 100;
-    else if (sym.includes('FINNIFTY') || sym.includes('MIDCPNIFTY')) step = 50;
+    if (sym.includes('BANKNIFTY') || sym === 'BANK NIFTY' || sym === '^NSEBANK') step = 100;
+    else if (sym.includes('SENSEX') || sym === '^BSESN') step = 100;
+    else if (sym.includes('FINNIFTY') || sym === 'FIN NIFTY' || sym.includes('MIDCP') || sym.includes('MIDCAP')) step = 50;
+    else if (sym.includes('GOLD')) step = 100;
+    else if (sym.includes('CRUDE')) step = 50;
     else if (p > 5000) step = 100;
     else if (p > 2000) step = 50;
     else if (p > 1000) step = 20;
@@ -153,210 +164,46 @@ const TradeSetupModule = (function () {
     };
   }
 
-  // Scan signals from real market cache or dynamic symbols
+  // Scan live 5-Minute Heikin Ashi signals directly from Tradejini CubePlus API
   function scanStrategy() {
-    const list = [];
-    const cache = window.REAL_MARKET_CACHE || {};
-    const nifty500 = window.NIFTY_500_STOCKS || [];
-
-    // Indices Scan
-    const majorIndices = [
-      { key: 'nifty', name: 'NIFTY 50', symbol: '^NSEI', ltp: 23315.64, chg: 45.04, chgPct: 0.19 },
-      { key: 'banknifty', name: 'BANK NIFTY', symbol: '^NSEBANK', ltp: 51240.20, chg: 112.50, chgPct: 0.22 },
-      { key: 'sensex', name: 'SENSEX', symbol: '^BSESN', ltp: 74314.59, chg: 135.20, chgPct: 0.18 },
-      { key: 'finnifty', name: 'FIN NIFTY', symbol: 'NIFTY_FIN_SERVICE.NS', ltp: 25318.35, chg: 78.10, chgPct: 0.31 }
-    ];
-
-    state.indices = majorIndices.map(idx => {
-      const atm = calculateATM(idx.name, idx.ltp);
-      return {
-        Name: idx.name,
-        Symbol: idx.symbol,
-        LTP: idx.ltp,
-        Change: idx.chg,
-        ChangePercent: idx.chgPct,
-        Time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
-        ATM: idx.chg >= 0 ? atm.ce : atm.pe
-      };
-    });
-
-    // Check symbols with 5m candles in cache
-    const symbolsToScan = ['NIFTY 50', 'BANK NIFTY', 'MAZDOCK', 'RELIANCE', 'TCS', 'HDFCBANK', 'ICICIBANK', 'INFY', 'BHARTIARTL', 'TATAMOTORS', 'SBIN', 'ITC', 'LT', 'BAJFINANCE', 'GOLD', 'CRUDEOIL'];
-
-    symbolsToScan.forEach(sym => {
-      let rawCandles = [];
-      let ltp = 0;
-      let prevClose = 0;
-
-      if (cache[sym] && cache[sym]['5m'] && cache[sym]['5m'].length >= 6) {
-        const raw = cache[sym]['5m'];
-        rawCandles = raw.map(c => ({
-          time: c.date ? c.date.split(' ')[1] || c.date : '',
-          open: c.open,
-          high: c.high,
-          low: c.low,
-          close: c.close
-        }));
-        ltp = raw[raw.length - 1].close;
-        prevClose = cache[sym].prevClose || raw[0].open;
-      } else {
-        // Synthesize standard intraday series from base price
-        const allStocks = window.NIFTY_500_STOCKS || (typeof NIFTY_500_STOCKS !== 'undefined' ? NIFTY_500_STOCKS : []);
-        const allMcx = window.MCX_COMMODITIES || (typeof MCX_COMMODITIES !== 'undefined' ? MCX_COMMODITIES : []);
-        const stockItem = allStocks.find(s => s.symbol === sym) || allMcx.find(m => m.symbol === sym);
-        if (stockItem) {
-          ltp = stockItem.price || stockItem.basePrice || 1000;
-          prevClose = stockItem.prevClose || (ltp * 0.995);
-        } else {
-          ltp = 1000;
-        }
-      }
-
-      if (rawCandles.length < 10) {
-        // Generate realistic 5m Heikin Ashi structure ending with current price
-        let curr = ltp * 0.985;
-        for (let k = 1; k <= 15; k++) {
-          const delta = (Math.sin(k) * 0.004 + (sym === 'MAZDOCK' || sym === 'GOLD' ? 0.003 : -0.001)) * curr;
-          const o = curr;
-          const c = curr + delta;
-          const h = Math.max(o, c) + Math.abs(delta) * 0.4;
-          const l = Math.min(o, c) - Math.abs(delta) * 0.4;
-          rawCandles.push({
-            time: `${String(9 + Math.floor(k * 5 / 60)).padStart(2, '0')}:${String((k * 5) % 60).padStart(2, '0')}`,
-            open: Number(o.toFixed(2)),
-            high: Number(h.toFixed(2)),
-            low: Number(l.toFixed(2)),
-            close: Number(c.toFixed(2))
-          });
-          curr = c;
-        }
-      }
-
-      const haCandles = convertToHeikinAshi(rawCandles);
-      const n = haCandles.length;
-      if (n < 5) return;
-
-      const cLast = haCandles[n - 1];
-      const cPrev1 = haCandles[n - 2];
-      const cPrev2 = haCandles[n - 3];
-      const cPrev3 = haCandles[n - 4];
-
-      // Bullish Setup: Prior red candles, then Green Reversal with Confirmation Candle (flat bottom)
-      const isPriorRed = (!cPrev2.IsGreen || !cPrev3.IsGreen);
-      const isBullishReversal = isPriorRed && cPrev1.IsGreen && cLast.IsGreen;
-      const isBullishCC = isBullishReversal && (cLast.NoLowerWick || cPrev1.NoLowerWick);
-
-      // Bearish Setup: Prior green candles, then Red Reversal with Confirmation Candle (flat top)
-      const isPriorGreen = (cPrev2.IsGreen || cPrev3.IsGreen);
-      const isBearishReversal = isPriorGreen && !cPrev1.IsGreen && !cLast.IsGreen;
-      const isBearishCC = isBearishReversal && (cLast.NoUpperWick || cPrev1.NoUpperWick);
-
-      if (isBullishCC || isBullishReversal) {
-        const atm = calculateATM(sym, cLast.HA_Close);
-        const entry = cLast.HA_Close;
-        const sl = Math.min(cPrev1.HA_Low, cLast.HA_Low);
-        const risk = Number(Math.max(entry - sl, entry * 0.003).toFixed(2));
-        const tgt1 = Number((entry + risk * 1.5).toFixed(2));
-        const tgt2 = Number((entry + risk * 2.5).toFixed(2));
-
-        list.push({
-          Id: `SIG_BUY_${sym}_${Date.now()}`,
-          Symbol: sym,
-          Type: 'BUY',
-          Category: (sym.includes('NIFTY') || sym.includes('SENSEX')) ? 'INDEX' : (sym.includes('GOLD') || sym.includes('CRUDE') ? 'MCX' : 'STOCK'),
-          Time: cLast.Time,
-          LTP: entry,
-          ATM: atm.ce,
-          Entry: entry,
-          StopLoss: sl,
-          RiskPoints: risk,
-          Target1: tgt1,
-          Target2: tgt2,
-          CCPosition: cLast.NoLowerWick ? 'चालू कॅन्डल (Flat Bottom)' : 'मागील कॅन्डल (Reversal CC)',
-          Candles: haCandles
-        });
-      } else if (isBearishCC || isBearishReversal) {
-        const atm = calculateATM(sym, cLast.HA_Close);
-        const entry = cLast.HA_Close;
-        const sl = Math.max(cPrev1.HA_High, cLast.HA_High);
-        const risk = Number(Math.max(sl - entry, entry * 0.003).toFixed(2));
-        const tgt1 = Number((entry - risk * 1.5).toFixed(2));
-        const tgt2 = Number((entry - risk * 2.5).toFixed(2));
-
-        list.push({
-          Id: `SIG_SELL_${sym}_${Date.now()}`,
-          Symbol: sym,
-          Type: 'SELL',
-          Category: (sym.includes('NIFTY') || sym.includes('SENSEX')) ? 'INDEX' : (sym.includes('GOLD') || sym.includes('CRUDE') ? 'MCX' : 'STOCK'),
-          Time: cLast.Time,
-          LTP: entry,
-          ATM: atm.pe,
-          Entry: entry,
-          StopLoss: sl,
-          RiskPoints: risk,
-          Target1: tgt1,
-          Target2: tgt2,
-          CCPosition: cLast.NoUpperWick ? 'चालू कॅन्डल (Flat Top)' : 'मागील कॅन्डल (Reversal CC)',
-          Candles: haCandles
-        });
-      }
-    });
-
-    if (list.length === 0) {
-      // Provide robust 5M Heikin Ashi Setups
-      list.push({
-        Id: `SIG_MAZDOCK_${Date.now()}`,
-        Symbol: 'MAZDOCK',
-        Type: 'BUY',
-        Category: 'STOCK',
-        Time: '15:15',
-        LTP: 4215.50,
-        ATM: '4200 CE',
-        Entry: 4215.50,
-        StopLoss: 4180.00,
-        RiskPoints: 35.50,
-        Target1: 4268.75,
-        Target2: 4304.25,
-        CCPosition: 'चालू कॅन्डल (Flat Bottom)',
-        Candles: []
-      });
-      list.push({
-        Id: `SIG_GOLD_${Date.now()}`,
-        Symbol: 'GOLD',
-        Type: 'BUY',
-        Category: 'MCX',
-        Time: '16:25',
-        LTP: 76840.00,
-        ATM: '76800 CE',
-        Entry: 76840.00,
-        StopLoss: 76520.00,
-        RiskPoints: 320.00,
-        Target1: 77320.00,
-        Target2: 77640.00,
-        CCPosition: 'चालू कॅन्डल (Flat Bottom)',
-        Candles: []
-      });
-      list.push({
-        Id: `SIG_BANKNIFTY_${Date.now()}`,
-        Symbol: 'BANK NIFTY',
-        Type: 'BUY',
-        Category: 'INDEX',
-        Time: '15:20',
-        LTP: 51240.20,
-        ATM: '51200 CE',
-        Entry: 51240.20,
-        StopLoss: 51080.00,
-        RiskPoints: 160.20,
-        Target1: 51480.50,
-        Target2: 51640.70,
-        CCPosition: 'मागील कॅन्डल (Reversal CC)',
-        Candles: []
-      });
+    const container = document.getElementById('tsSignalsContainer');
+    if (container && (!state.signals || state.signals.length === 0)) {
+      container.innerHTML = `
+        <div class="ts-empty-state">
+          <div class="ts-empty-icon">⏳</div>
+          <h3>Tradejini CubePlus Live 5-Minute Heikin Ashi स्कॅनिंग चालू आहे...</h3>
+          <p>कृपया प्रतीक्षा करा — थेट ब्रोकर डेटाफीडवरून रिअल-टाइम सेटअप तपासले जात आहेत.</p>
+        </div>
+      `;
     }
 
-    state.signals = list;
-    filterAndRenderSignals();
-    renderIndices();
+    fetch('./api/tradejini/trade-setup')
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (data && data.s === 'ok') {
+          if (Array.isArray(data.indices) && data.indices.length > 0) {
+            state.indices = data.indices;
+            renderIndices();
+          }
+          if (Array.isArray(data.signals)) {
+            const hadKnown = state.knownSignalIds.size > 0;
+            data.signals.forEach(sig => {
+              if (!state.knownSignalIds.has(sig.Id)) {
+                state.knownSignalIds.add(sig.Id);
+                if (hadKnown && sig.Status === 'ACTIVE') {
+                  playAlertSound(sig.Type);
+                  triggerBrowserNotification(sig);
+                }
+              }
+            });
+            state.signals = data.signals;
+            filterAndRenderSignals();
+          }
+        }
+      })
+      .catch(err => {
+        console.warn('[TradeSetup] Live Tradejini scan error:', err);
+      });
   }
 
   function renderIndices() {
@@ -379,6 +226,19 @@ const TradeSetupModule = (function () {
         </div>
       `;
     }).join('');
+  }
+
+  function getStatusBadgeStyle(status) {
+    if (status === 'TARGET_2_HIT') {
+      return 'background:#dcfce7; color:#15803d; border:1px solid #86efac;';
+    }
+    if (status === 'TARGET_1_HIT') {
+      return 'background:#ecfdf5; color:#047857; border:1px solid #6ee7b7;';
+    }
+    if (status === 'SL_HIT') {
+      return 'background:#fef2f2; color:#b91c1c; border:1px solid #fca5a5;';
+    }
+    return 'background:#eff6ff; color:#1d4ed8; border:1px solid #93c5fd;';
   }
 
   function filterAndRenderSignals() {
@@ -412,8 +272,8 @@ const TradeSetupModule = (function () {
       container.innerHTML = `
         <div class="ts-empty-state">
           <div class="ts-empty-icon">🔍</div>
-          <h3>सध्या कोणताही नवीन सेटअप मिळालेला नाही</h3>
-          <p>५-मिनिट Heikin Ashi कॅन्डल पूर्ण होताच नवीन सिग्नल येथे आपोआप अलर्ट होतील.</p>
+          <h3>मागील ४० मिनिटांत कोणताही ५-मिनिट Heikin Ashi + RSI(7) सेटअप मिळालेला नाही</h3>
+          <p>३+ विरुद्ध HA कॅन्डल्स + <strong>RSI(7) &lt; 20 (BUY)</strong> किंवा <strong>RSI(7) &gt; 80 (SELL)</strong> + पहिली Flat-Wick कन्फर्मेशन कॅन्डल पूर्ण होताच नवीन सिग्नल येथे आपोआप दिसेल.</p>
         </div>
       `;
       return;
@@ -423,30 +283,64 @@ const TradeSetupModule = (function () {
       const isBuy = sig.Type === 'BUY';
       const badgeClass = isBuy ? 'ts-pill-buy' : 'ts-pill-sell';
       const badgeText = isBuy ? '🟢 BUY (कॉल सेटअप)' : '🔴 SELL (पुट सेटअप)';
+      const statusStyle = getStatusBadgeStyle(sig.Status || 'ACTIVE');
+      const statusText = sig.StatusText || '🟢 ट्रेड चालू (Active)';
+      const haO = sig.HA_Open != null ? sig.HA_Open : sig.Entry;
+      const haH = sig.HA_High != null ? sig.HA_High : sig.Entry;
+      const haL = sig.HA_Low != null ? sig.HA_Low : sig.StopLoss;
+      const haC = sig.HA_Close != null ? sig.HA_Close : sig.Entry;
+      const priorTrend = sig.PriorTrend || (isBuy ? '3+ Red HA Candles' : '3+ Green HA Candles');
+      const rsiDisplay = sig.RSILabel || (sig.RSI != null ? `${sig.RSI} (${isBuy ? '< 20 Oversold' : '> 80 Overbought'})` : (isBuy ? '< 20 Oversold' : '> 80 Overbought'));
+      const rsiBadgeStyle = isBuy
+        ? 'background:#ecfdf5; color:#047857; border:1px solid #6ee7b7;'
+        : 'background:#fef2f2; color:#b91c1c; border:1px solid #fca5a5;';
 
       return `
-        <div class="ts-signal-card ${isBuy ? 'buy-border' : 'sell-border'}">
-          <div class="ts-card-header">
+        <div class="ts-signal-card ${isBuy ? 'buy-border' : 'sell-border'}" style="${sig.Status === 'SL_HIT' ? 'opacity:0.86;' : ''}">
+          <div class="ts-card-header" style="flex-wrap:wrap; gap:6px;">
             <div class="ts-card-title-group">
               <span class="ts-pill ${badgeClass}">${badgeText}</span>
               <h3 class="ts-symbol-title">${sig.Symbol}</h3>
               <span class="ts-cat-badge">${sig.Category}</span>
             </div>
-            <div class="ts-card-time">⏰ ${sig.Time}</div>
+            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+              <span style="font-size:11px; font-weight:800; padding:3px 8px; border-radius:999px; ${rsiBadgeStyle}">
+                ${isBuy ? '📉' : '📈'} RSI(7): ${rsiDisplay}
+              </span>
+              <span style="font-size:11px; font-weight:800; padding:3px 8px; border-radius:999px; ${statusStyle}">
+                ${statusText}
+              </span>
+              <div class="ts-card-time">⏰ ${sig.Time}</div>
+            </div>
           </div>
 
-          <div class="ts-atm-banner">
-            <span>🎯 शिफारस केलेला पर्याय (ATM Strike):</span>
-            <strong>${sig.ATM}</strong>
+          <div class="ts-atm-banner" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+            <div>
+              <span>🎯 शिफारस केलेला पर्याय (ATM Strike):</span>
+              <strong>${sig.ATM}</strong>
+            </div>
+            <div style="font-size:12px; font-weight:800; color:#0f172a; background:#ffffff; padding:3px 10px; border-radius:6px; border:1px solid #cbd5e1;">
+              चालू भाव (Live LTP): <span style="color:${isBuy ? '#059669' : '#dc2626'};">₹${sig.LTP != null ? sig.LTP : sig.Entry}</span>
+            </div>
+          </div>
+
+          <!-- Pure Heikin Ashi Signal Candle OHLC + RSI Strip -->
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; padding:6px 10px; margin-bottom:10px; font-size:11px;">
+            <span style="font-weight:700; color:#475569;">🕯️ Signal 5m HA OHLC:</span>
+            <span>O: <strong>₹${haO}</strong></span>
+            <span>H: <strong style="color:#089981;">₹${haH}</strong></span>
+            <span>L: <strong style="color:#f23645;">₹${haL}</strong></span>
+            <span>C: <strong style="color:#1d4ed8;">₹${haC}</strong></span>
+            <span style="background:#eef2ff; color:#3730a3; padding:2px 6px; border-radius:4px; font-weight:700;">मागील ट्रेंड: ${priorTrend}</span>
           </div>
 
           <div class="ts-card-grid">
             <div class="ts-cell">
-              <span class="ts-cell-label">एन्ट्री भाव (Entry):</span>
+              <span class="ts-cell-label">एन्ट्री (HA Close):</span>
               <strong class="ts-cell-val" style="color:var(--text-main);">₹${sig.Entry}</strong>
             </div>
             <div class="ts-cell">
-              <span class="ts-cell-label">स्टॉप लॉस (SL):</span>
+              <span class="ts-cell-label">स्टॉप लॉस (${isBuy ? 'HA Low' : 'HA High'}):</span>
               <strong class="ts-cell-val text-danger">₹${sig.StopLoss}</strong>
             </div>
             <div class="ts-cell">
@@ -468,7 +362,7 @@ const TradeSetupModule = (function () {
           </div>
 
           <div class="ts-card-actions">
-            <button class="ts-btn-outline" onclick="TradeSetupModule.viewChart('${sig.Symbol}')">
+            <button class="ts-btn-outline" onclick="TradeSetupModule.viewChart('${sig.Symbol}', '${sig.Id}')">
               📊 हीकेन आशी चार्ट पहा
             </button>
             <button class="ts-btn-solid" onclick="TradeSetupModule.openInMainChart('${sig.Symbol}')">
@@ -498,94 +392,38 @@ const TradeSetupModule = (function () {
     if (modal) modal.classList.remove('active');
   }
 
-  function viewChart(sym) {
-    let sig = state.signals.find(s => s.Symbol === sym);
+  function viewChart(sym, sigId) {
+    let sig = sigId ? state.signals.find(s => s.Id === sigId) : null;
+    if (!sig) sig = state.signals.find(s => s.Symbol === sym);
     if (!sig && state.filteredSignals) {
       sig = state.filteredSignals.find(s => s.Symbol === sym);
     }
     if (!sig) return;
 
-    // Ensure sig has candles
+    const showModal = () => {
+      state.chartData = sig;
+      const modal = document.getElementById('tsChartModal');
+      if (!modal) return;
+      const rsiInfo = sig.RSILabel || (sig.RSI != null ? sig.RSI : (sig.Type === 'BUY' ? '< 20' : '> 80'));
+      document.getElementById('tsChartTitle').textContent = `${sig.Symbol} - 5M Heikin Ashi + RSI(7) Setup (${sig.StatusText || 'Active'})`;
+      document.getElementById('tsChartSubtitle').textContent = `${sig.Type} | Time: ${sig.Time} | RSI(7): ${rsiInfo} | Entry (HA Close): ₹${sig.Entry} | SL (${sig.Type === 'BUY' ? 'HA Low' : 'HA High'}): ₹${sig.StopLoss} | Live LTP: ₹${sig.LTP || sig.Entry}`;
+      modal.classList.add('active');
+      setTimeout(() => drawHeikinAshiChart(sig), 80);
+    };
+
     if (!sig.Candles || sig.Candles.length === 0) {
-      const cache = window.REAL_MARKET_CACHE || {};
-      const norm = sym.toUpperCase().replace(/\s+/g, '');
-      let raw = null;
-      if (cache[sym] && (cache[sym].m5 || cache[sym].candles)) {
-        raw = cache[sym].m5 || cache[sym].candles;
-      } else {
-        for (const k of Object.keys(cache)) {
-          if (k.toUpperCase().replace(/\s+/g, '') === norm || k.toUpperCase() === norm) {
-            raw = cache[k].m5 || cache[k].candles;
-            break;
+      fetch(`./api/tradejini/candles?symbol=${encodeURIComponent(sym)}&resolution=5`)
+        .then(res => res.ok ? res.json() : null)
+        .then(data => {
+          if (data && data.s === 'ok' && Array.isArray(data.candles) && data.candles.length > 0) {
+            sig.Candles = convertToHeikinAshi(data.candles).slice(-24);
           }
-        }
-      }
-
-      if (raw && raw.length > 0) {
-        const rawObjects = raw.map(item => {
-          const arr = Array.isArray(item) ? item : (item && item.value ? item.value : item);
-          const ts = Number(arr[0]);
-          const dt = new Date(ts > 1e11 ? ts : ts * 1000);
-          const hh = isNaN(dt.getTime()) ? "09" : String(dt.getHours()).padStart(2, '0');
-          const mm = isNaN(dt.getTime()) ? "15" : String(dt.getMinutes()).padStart(2, '0');
-          return {
-            time: `${hh}:${mm}`,
-            open: Number(arr[1]),
-            close: Number(arr[2]),
-            low: Number(arr[3]),
-            high: Number(arr[4])
-          };
-        }).filter(c => !isNaN(c.open) && !isNaN(c.close));
-
-        if (rawObjects.length > 0) {
-          sig.Candles = convertToHeikinAshi(rawObjects);
-        }
-      }
-
-      if (!sig.Candles || sig.Candles.length === 0) {
-        // Synthesize authentic 5M HA candles
-        let curr = (sig.Entry || 1000) * 0.985;
-        const fakeRaw = [];
-        for (let k = 1; k <= 20; k++) {
-          const delta = (Math.sin(k * 0.7) * 0.003 + (sig.Type === 'BUY' ? 0.001 : -0.001)) * curr;
-          const o = curr;
-          const c = curr + delta;
-          const h = Math.max(o, c) + Math.abs(delta) * 0.45;
-          const l = Math.min(o, c) - Math.abs(delta) * 0.45;
-          fakeRaw.push({
-            time: `${String(9 + Math.floor(k * 5 / 60)).padStart(2, '0')}:${String((k * 5) % 60).padStart(2, '0')}`,
-            open: Number(o.toFixed(2)),
-            high: Number(h.toFixed(2)),
-            low: Number(l.toFixed(2)),
-            close: Number(c.toFixed(2))
-          });
-          curr = c;
-        }
-        sig.Candles = convertToHeikinAshi(fakeRaw);
-      }
-
-      if (sig.Candles && sig.Candles.length > 0) {
-        const lastHa = sig.Candles[sig.Candles.length - 1];
-        if (Math.abs(lastHa.HA_Close - sig.Entry) / (sig.Entry || 1) > 0.05) {
-          const scale = sig.Entry / (lastHa.HA_Close || 1);
-          sig.Candles = sig.Candles.map(c => ({
-            ...c,
-            HA_Open: Number((c.HA_Open * scale).toFixed(2)),
-            HA_Close: Number((c.HA_Close * scale).toFixed(2)),
-            HA_High: Number((c.HA_High * scale).toFixed(2)),
-            HA_Low: Number((c.HA_Low * scale).toFixed(2))
-          }));
-        }
-      }
+          showModal();
+        })
+        .catch(() => showModal());
+    } else {
+      showModal();
     }
-
-    state.chartData = sig;
-    const modal = document.getElementById('tsChartModal');
-    if (!modal) return;
-    document.getElementById('tsChartTitle').textContent = `${sig.Symbol} - 5M Heikin Ashi Setup`;
-    document.getElementById('tsChartSubtitle').textContent = `${sig.Type} Setup | Entry: ₹${sig.Entry} | SL: ₹${sig.StopLoss} | ATM: ${sig.ATM}`;
-    modal.classList.add('active');
-    setTimeout(() => drawHeikinAshiChart(sig), 80);
   }
 
   function closeChartModal() {
@@ -611,7 +449,7 @@ const TradeSetupModule = (function () {
     const candles = sig.Candles || [];
     if (candles.length === 0) return;
 
-    const margin = { top: 25, right: 75, bottom: 30, left: 20 };
+    const margin = { top: 28, right: 80, bottom: 30, left: 20 };
     const plotW = width - margin.left - margin.right;
     const plotH = height - margin.top - margin.bottom;
 
@@ -625,7 +463,7 @@ const TradeSetupModule = (function () {
     if (sig.Target1) { minP = Math.min(minP, sig.Target1); maxP = Math.max(maxP, sig.Target1); }
     if (sig.Target2) { minP = Math.min(minP, sig.Target2); maxP = Math.max(maxP, sig.Target2); }
 
-    const pad = (maxP - minP) * 0.08 || 1;
+    const pad = (maxP - minP) * 0.10 || 1;
     minP -= pad;
     maxP += pad;
 
@@ -649,11 +487,22 @@ const TradeSetupModule = (function () {
     // Draw Candles
     const step = plotW / candles.length;
     const barW = Math.max(step * 0.65, 4);
+    const sigIdx = typeof sig.SignalIndex === 'number' ? sig.SignalIndex : candles.length - 1;
 
     candles.forEach((c, i) => {
       const x = margin.left + i * step + step / 2;
       const isGreen = c.IsGreen;
       const col = isGreen ? '#089981' : '#f23645';
+
+      // Highlight the Signal Confirmation Candle (CC)
+      if (i === sigIdx) {
+        ctx.fillStyle = 'rgba(245, 158, 11, 0.14)';
+        ctx.fillRect(margin.left + i * step, margin.top, step, plotH);
+        ctx.fillStyle = '#b45309';
+        ctx.font = 'bold 10px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('★ CC', x, margin.top - 8);
+      }
 
       const yO = getY(c.HA_Open);
       const yC = getY(c.HA_Close);
@@ -680,15 +529,15 @@ const TradeSetupModule = (function () {
       ctx.fillRect(x - barW / 2, top, barW, h);
 
       // Time axis
-      if (i % 3 === 0 || i === candles.length - 1) {
-        ctx.fillStyle = '#94a3b8';
-        ctx.font = '10px sans-serif';
+      if (i === sigIdx || i % 3 === 0 || i === candles.length - 1) {
+        ctx.fillStyle = i === sigIdx ? '#b45309' : '#94a3b8';
+        ctx.font = i === sigIdx ? 'bold 10px sans-serif' : '10px sans-serif';
         ctx.textAlign = 'center';
         ctx.fillText(c.Time, x, height - margin.bottom + 16);
       }
     });
 
-    // Draw Entry, SL & Targets lines
+    // Draw Entry, SL, Target 1 & Target 2 lines
     ctx.textAlign = 'right';
     if (sig.Entry) {
       const yEnt = getY(sig.Entry);
@@ -701,7 +550,7 @@ const TradeSetupModule = (function () {
       ctx.stroke();
       ctx.fillStyle = '#2563eb';
       ctx.font = 'bold 11px sans-serif';
-      ctx.fillText(`एन्ट्री: ₹${sig.Entry}`, margin.left + plotW - 8, yEnt - 6);
+      ctx.fillText(`एन्ट्री (HA Close): ₹${sig.Entry}`, margin.left + plotW - 8, yEnt - 6);
     }
     if (sig.StopLoss) {
       const ySl = getY(sig.StopLoss);
@@ -716,6 +565,19 @@ const TradeSetupModule = (function () {
       ctx.font = 'bold 11px sans-serif';
       ctx.fillText(`स्टॉप लॉस: ₹${sig.StopLoss}`, margin.left + plotW - 8, ySl + 14);
     }
+    if (sig.Target1) {
+      const yT1 = getY(sig.Target1);
+      ctx.strokeStyle = '#059669';
+      ctx.lineWidth = 1.2;
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath();
+      ctx.moveTo(margin.left, yT1);
+      ctx.lineTo(margin.left + plotW, yT1);
+      ctx.stroke();
+      ctx.fillStyle = '#059669';
+      ctx.font = 'bold 10px sans-serif';
+      ctx.fillText(`T1: ₹${sig.Target1}`, margin.left + 90, yT1 - 4);
+    }
     if (sig.Target2) {
       const yTgt = getY(sig.Target2);
       ctx.strokeStyle = '#10b981';
@@ -727,8 +589,9 @@ const TradeSetupModule = (function () {
       ctx.stroke();
       ctx.fillStyle = '#10b981';
       ctx.font = 'bold 11px sans-serif';
-      ctx.fillText(`टार्गेट: ₹${sig.Target2}`, margin.left + plotW - 8, yTgt - 6);
+      ctx.fillText(`टार्गेट २: ₹${sig.Target2}`, margin.left + plotW - 8, yTgt - 6);
     }
+    ctx.setLineDash([]);
   }
 
   function openInMainChart(symbol) {
@@ -736,19 +599,22 @@ const TradeSetupModule = (function () {
     if (window.switchView) {
       window.switchView('chart');
     }
-    if (window.selectStock) {
-      window.selectStock(symbol);
-    }
     if (window.AppState) {
       window.AppState.chartType = 'heikinashi';
+      window.AppState.currentTimeframe = '5';
       const btns = document.querySelectorAll('.chart-type-btn');
       btns.forEach(b => {
         if (b.getAttribute('data-type') === 'heikinashi') b.classList.add('active');
         else b.classList.remove('active');
       });
-      if (typeof window.renderEChart === 'function') {
-        window.renderEChart();
-      }
+      const tfBtns = document.querySelectorAll('.tf-btn');
+      tfBtns.forEach(b => {
+        if (b.getAttribute('data-tf') === '5') b.classList.add('active');
+        else b.classList.remove('active');
+      });
+    }
+    if (window.selectStock) {
+      window.selectStock(symbol);
     }
   }
 
@@ -772,26 +638,33 @@ const TradeSetupModule = (function () {
     const btnDemo = document.getElementById('tsBtnTestAlert');
     if (btnDemo) {
       btnDemo.addEventListener('click', () => {
-        const demo = {
-          Id: `DEMO_${Date.now()}`,
-          Symbol: 'NIFTY 50',
-          Type: 'BUY',
-          Category: 'INDEX',
-          Time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
-          LTP: 23315.00,
-          ATM: '23300 CE',
-          Entry: 23315.00,
-          StopLoss: 23285.00,
-          Target1: 23360.00,
-          Target2: 23390.00,
-          RiskPoints: 30,
-          CCPosition: 'चालू कॅन्डल (Flat Bottom)'
-        };
-        state.signals.unshift(demo);
-        filterAndRenderSignals();
-        playAlertSound('BUY');
-        triggerBrowserNotification(demo);
-        showSignalModal(demo);
+        if (state.signals && state.signals.length > 0) {
+          const liveSig = state.signals[0];
+          playAlertSound(liveSig.Type);
+          triggerBrowserNotification(liveSig);
+          showSignalModal(liveSig);
+        } else {
+          const niftyIdx = (state.indices && state.indices[0]) || { Name: 'NIFTY 50', LTP: 22703.30, ATM: '22700 CE' };
+          const ltp = Number(niftyIdx.LTP || 22703.30);
+          const demo = {
+            Id: `LIVE_TEST_${Date.now()}`,
+            Symbol: niftyIdx.Name || 'NIFTY 50',
+            Type: 'BUY',
+            Category: 'INDEX',
+            Time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
+            LTP: ltp,
+            ATM: niftyIdx.ATM || `${Math.round(ltp / 50) * 50} CE`,
+            Entry: ltp,
+            StopLoss: Number((ltp - 30).toFixed(2)),
+            Target1: Number((ltp + 45).toFixed(2)),
+            Target2: Number((ltp + 75).toFixed(2)),
+            RiskPoints: 30,
+            CCPosition: 'चालू कॅन्डल (Flat Bottom)'
+          };
+          playAlertSound('BUY');
+          triggerBrowserNotification(demo);
+          showSignalModal(demo);
+        }
       });
     }
 

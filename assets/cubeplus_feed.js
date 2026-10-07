@@ -26,7 +26,7 @@
 
     async getStatus() {
       try {
-        const res = await fetch('/api/tradejini/status');
+        const res = await fetch('./api/tradejini/status');
         if (res.ok) {
           return await res.json();
         }
@@ -41,13 +41,13 @@
     },
 
     async fetchCandles(symbol, interval = '5', days = 7) {
-      const res = await fetch(`/api/tradejini/candles?symbol=${encodeURIComponent(symbol)}&interval=${interval}&days=${days}`);
+      const res = await fetch(`./api/tradejini/candles?symbol=${encodeURIComponent(symbol)}&interval=${interval}&days=${days}`);
       if (!res.ok) throw new Error("Failed to fetch Tradejini candles");
       return await res.json();
     },
 
     async fetchScreener() {
-      const res = await fetch('/api/tradejini/screener');
+      const res = await fetch('./api/tradejini/screener');
       if (!res.ok) throw new Error("Failed to fetch Tradejini screener");
       return await res.json();
     },

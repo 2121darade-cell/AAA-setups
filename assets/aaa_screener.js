@@ -1,6 +1,8 @@
 // ============================================================================
-// FINANTHROPIST EDUCARE - AAA (NIFTY 200 CANDLESTICK TREND & REVERSAL SCREENER)
-// Reversal Strategies: 4+ Consecutive Red/Green Trend -> Harami, Engulfing, Piercing, Morning/Evening Star
+// FINANTHROPIST EDUCARE - AAA (DAILY 1D CANDLESTICK TREND & REVERSAL SCREENER)
+// Daily (1D) Reversal Strategies Calculated Each Morning:
+// Consecutive Red/Green Daily Trend -> Bearish Harami, Bullish Harami,
+// Bearish Engulfing, Bullish Engulfing, Piercing Line, Dark Cloud Cover, Morning/Evening Star
 // ============================================================================
 
 const AAAScreenerModule = (function () {
@@ -8,8 +10,8 @@ const AAAScreenerModule = (function () {
   let currentFilter = {
     type: 'ALL',
     pattern: '',
-    lookback: '5',
-    trendLength: '4',
+    lookback: '10',
+    trendLength: '3',
     search: ''
   };
   let currentChartData = null;
@@ -36,67 +38,156 @@ const AAAScreenerModule = (function () {
     return count;
   }
 
-  function detectPatternsForSymbol(symbol, stockInfo, dailyCandles, minTrendLength = 4, lookbackDays = 5) {
+  function detectPatternsForSymbol(symbol, stockInfo, dailyCandles, minTrendLength = 3, lookbackDays = 10) {
     const signals = [];
     if (!dailyCandles || dailyCandles.length < minTrendLength + 2) return signals;
 
-    const startIdx = Math.max(minTrendLength + 1, dailyCandles.length - lookbackDays);
+    const startIdx = Math.max(minTrendLength, dailyCandles.length - lookbackDays);
 
     for (let i = startIdx; i < dailyCandles.length; i++) {
       const cCurr = dailyCandles[i];
       const cPrev = dailyCandles[i - 1];
+      const prevBody = body(cPrev);
+      const currBody = body(cCurr);
+      const prevRange = Math.max((cPrev.high || cPrev.open) - (cPrev.low || cPrev.close), 0.01);
+      const currRange = Math.max((cCurr.high || cCurr.close) - (cCurr.low || cCurr.open), 0.01);
+      if (prevBody <= 0 || currBody <= 0) continue;
 
-      // 1. BUY SIDE: 4+ Red candles -> Green Reversal
+      const isStrongMother = (prevBody / prevRange) >= 0.45;
+      const isMeaningfulPrev = (prevBody / prevRange) >= 0.30;
+      const isStrongCurr = (currBody / currRange) >= 0.50;
+
+      // 1. BUY SIDE (Daily 1D): Downtrend -> Green Reversal
       if (isGreen(cCurr) && isRed(cPrev)) {
         const redTrend = countConsecutiveRed(dailyCandles, i - 1);
-        if (redTrend >= minTrendLength) {
-          const prevBody = body(cPrev);
-          const currBody = body(cCurr);
-
-          // Bullish Harami
-          if (cCurr.open >= cPrev.close * 0.999 && cCurr.close <= cPrev.open * 1.001 && currBody < prevBody) {
+        if (redTrend >= minTrendLength && cPrev.close < dailyCandles[i - redTrend].close) {
+          // Strict Bullish Harami (Finanthropist Slide)
+          if (
+            isStrongMother &&
+            cCurr.open >= cPrev.close &&
+            cCurr.close <= cPrev.open &&
+            cCurr.high <= cPrev.high &&
+            cCurr.low >= cPrev.low &&
+            currBody <= prevBody * 0.65 &&
+            currBody >= prevBody * 0.10 &&
+            (currBody / currRange) >= 0.12
+          ) {
             signals.push(createSignal('BUY', 'Bullish Harami', symbol, stockInfo, dailyCandles, i, redTrend));
             continue;
           }
-          // Bullish Engulfing
-          if (cCurr.open <= cPrev.close * 1.002 && cCurr.close >= cPrev.open * 0.998 && currBody > prevBody) {
+          // Strict Bullish Engulfing (Finanthropist Slide)
+          if (
+            isMeaningfulPrev &&
+            isStrongCurr &&
+            cCurr.open <= cPrev.close &&
+            cCurr.close >= cPrev.open &&
+            cCurr.high >= cPrev.high &&
+            cCurr.low <= cPrev.low &&
+            currBody >= prevBody * 1.15
+          ) {
             signals.push(createSignal('BUY', 'Bullish Engulfing', symbol, stockInfo, dailyCandles, i, redTrend));
             continue;
           }
-          // Bullish Piercing Line
-          if (cCurr.open < cPrev.close && cCurr.close > ((cPrev.open + cPrev.close) / 2) && cCurr.close < cPrev.open) {
-            signals.push(createSignal('BUY', 'Piercing Line', symbol, stockInfo, dailyCandles, i, redTrend));
+          // Strict Bullish Piercing (Finanthropist Slide)
+          if (
+            isStrongMother &&
+            isStrongCurr &&
+            cCurr.open < cPrev.close &&
+            cCurr.close > ((cPrev.open + cPrev.close) / 2) &&
+            cCurr.close < cPrev.open
+          ) {
+            signals.push(createSignal('BUY', 'Bullish Piercing', symbol, stockInfo, dailyCandles, i, redTrend));
             continue;
           }
-          // Generic Bullish Reversal
-          signals.push(createSignal('BUY', 'Bullish Reversal', symbol, stockInfo, dailyCandles, i, redTrend));
         }
       }
 
-      // 2. SELL SIDE: 4+ Green candles -> Red Reversal
+      // 2. SELL SIDE (Daily 1D): Uptrend -> Red Reversal
       if (isRed(cCurr) && isGreen(cPrev)) {
         const greenTrend = countConsecutiveGreen(dailyCandles, i - 1);
-        if (greenTrend >= minTrendLength) {
-          const prevBody = body(cPrev);
-          const currBody = body(cCurr);
-
-          // Bearish Harami
-          if (cCurr.open <= cPrev.close * 1.001 && cCurr.close >= cPrev.open * 0.999 && currBody < prevBody) {
+        if (greenTrend >= minTrendLength && cPrev.close > dailyCandles[i - greenTrend].close) {
+          // Strict Bearish Harami (Finanthropist Slide)
+          if (
+            isStrongMother &&
+            cCurr.open <= cPrev.close &&
+            cCurr.close >= cPrev.open &&
+            cCurr.high <= cPrev.high &&
+            cCurr.low >= cPrev.low &&
+            currBody <= prevBody * 0.65 &&
+            currBody >= prevBody * 0.10 &&
+            (currBody / currRange) >= 0.12
+          ) {
             signals.push(createSignal('SELL', 'Bearish Harami', symbol, stockInfo, dailyCandles, i, greenTrend));
             continue;
           }
-          // Bearish Engulfing
-          if (cCurr.open >= cPrev.close * 0.998 && cCurr.close <= cPrev.open * 1.002 && currBody > prevBody) {
+          // Strict Bearish Engulfing (Finanthropist Slide)
+          if (
+            isMeaningfulPrev &&
+            isStrongCurr &&
+            cCurr.open >= cPrev.close &&
+            cCurr.close <= cPrev.open &&
+            cCurr.high >= cPrev.high &&
+            cCurr.low <= cPrev.low &&
+            currBody >= prevBody * 1.15
+          ) {
             signals.push(createSignal('SELL', 'Bearish Engulfing', symbol, stockInfo, dailyCandles, i, greenTrend));
             continue;
           }
-          // Dark Cloud Cover
-          if (cCurr.open > cPrev.close && cCurr.close < ((cPrev.open + cPrev.close) / 2) && cCurr.close > cPrev.open) {
-            signals.push(createSignal('SELL', 'Dark Cloud Cover', symbol, stockInfo, dailyCandles, i, greenTrend));
+          // Strict Bearish Piercing (Finanthropist Slide)
+          if (
+            isStrongMother &&
+            isStrongCurr &&
+            cCurr.open > cPrev.close &&
+            cCurr.close < ((cPrev.open + cPrev.close) / 2) &&
+            cCurr.close > cPrev.open
+          ) {
+            signals.push(createSignal('SELL', 'Bearish Piercing', symbol, stockInfo, dailyCandles, i, greenTrend));
             continue;
           }
-          // Generic Bearish Reversal
-          signals.push(createSignal('SELL', 'Bearish Reversal', symbol, stockInfo, dailyCandles, i, greenTrend));
+        }
+      }
+
+      // 3. 3-CANDLE MORNING STAR & EVENING STAR (Finanthropist Slide)
+      if (i >= minTrendLength + 1) {
+        const cFirst = dailyCandles[i - 2];
+        const firstBody = body(cFirst);
+        const firstRange = Math.max((cFirst.high || cFirst.open) - (cFirst.low || cFirst.close), 0.01);
+        const starTop = Math.max(cPrev.open, cPrev.close);
+        const starBottom = Math.min(cPrev.open, cPrev.close);
+        const firstMid = (cFirst.open + cFirst.close) / 2;
+
+        // Morning Star: Downtrend -> Strong Red 1st candle -> 2nd candle open & close below 1st close -> 3rd Green candle closes > 50% of 1st body
+        if (isRed(cFirst) && (firstBody / firstRange) >= 0.45 && isGreen(cCurr) && (currBody / currRange) >= 0.45) {
+          const redTrendStar = countConsecutiveRed(dailyCandles, i - 2);
+          if (
+            redTrendStar >= minTrendLength &&
+            prevBody <= firstBody * 0.35 &&
+            starTop <= cFirst.close &&
+            starBottom < cFirst.close &&
+            cPrev.low <= cFirst.low &&
+            cPrev.low <= cCurr.low &&
+            cCurr.close > firstMid
+          ) {
+            signals.push(createSignal('BUY', 'Morning Star', symbol, stockInfo, dailyCandles, i, redTrendStar));
+            continue;
+          }
+        }
+
+        // Evening Star: Uptrend -> Strong Green 1st candle -> 2nd candle open & close above 1st close -> 3rd Red candle closes < 50% of 1st body
+        if (isGreen(cFirst) && (firstBody / firstRange) >= 0.45 && isRed(cCurr) && (currBody / currRange) >= 0.45) {
+          const greenTrendStar = countConsecutiveGreen(dailyCandles, i - 2);
+          if (
+            greenTrendStar >= minTrendLength &&
+            prevBody <= firstBody * 0.35 &&
+            starBottom >= cFirst.close &&
+            starTop > cFirst.close &&
+            cPrev.high >= cFirst.high &&
+            cPrev.high >= cCurr.high &&
+            cCurr.close < firstMid
+          ) {
+            signals.push(createSignal('SELL', 'Evening Star', symbol, stockInfo, dailyCandles, i, greenTrendStar));
+            continue;
+          }
         }
       }
     }
@@ -108,34 +199,30 @@ const AAAScreenerModule = (function () {
     const cCurr = candles[idx];
     const cPrev = candles[idx - 1];
 
-    let entry, stopLoss;
-    if (type === 'BUY') {
-      entry = cCurr.open;
-      stopLoss = cPrev.low;
-    } else {
-      entry = cCurr.close;
-      stopLoss = cPrev.high;
-    }
+    const entry = Number(cCurr.close.toFixed(2));
+    const stopLoss = type === 'BUY'
+      ? Number(Math.min(cPrev.low, cCurr.low).toFixed(2))
+      : Number(Math.max(cPrev.high, cCurr.high).toFixed(2));
 
-    const risk = Number(Math.max(Math.abs(entry - stopLoss), entry * 0.005).toFixed(2));
+    const risk = Number(Math.max(Math.abs(entry - stopLoss), 0.05).toFixed(2));
     const target1 = type === 'BUY' ? Number((entry + risk * 1.5).toFixed(2)) : Number((entry - risk * 1.5).toFixed(2));
     const target2 = type === 'BUY' ? Number((entry + risk * 2.5).toFixed(2)) : Number((entry - risk * 2.5).toFixed(2));
 
     return {
       id: `${symbol}_${type}_${cCurr.date || idx}`,
       symbol: symbol,
-      name: stockInfo.name || symbol,
-      industry: stockInfo.industry || 'NSE Stock',
+      name: stockInfo.name || `${symbol} (Daily 1D)`,
+      industry: stockInfo.industry || 'NSE Daily (1D)',
       type: type,
       pattern: pattern,
       trendLength: trendCount,
-      date: cCurr.date || new Date().toLocaleDateString('en-IN'),
-      entry: Number(entry.toFixed(2)),
-      stopLoss: Number(stopLoss.toFixed(2)),
+      date: cCurr.fullDate || cCurr.date || new Date().toLocaleDateString('en-IN'),
+      entry: entry,
+      stopLoss: stopLoss,
       target1: target1,
       target2: target2,
       risk: risk,
-      ltp: cCurr.close,
+      ltp: candles[candles.length - 1].close,
       candles: candles.slice(Math.max(0, idx - 14), idx + 1)
     };
   }
@@ -145,13 +232,16 @@ const AAAScreenerModule = (function () {
     const emptyState = document.getElementById('aaaEmptyState');
     if (tbody && (!allSignals || allSignals.length === 0)) {
       tbody.innerHTML = `<tr><td colspan="10" style="text-align:center; padding: 35px; color: var(--accent); font-weight: 600;">
-        <i class="fas fa-spinner fa-spin" style="margin-right: 8px;"></i> Scanning Tradejini 5-Minute Live Market Datafeed for AAA Setups...
+        <i class="fas fa-spinner fa-spin" style="margin-right: 8px;"></i> Scanning Tradejini Daily (1D) Timeframe Datafeed for AAA Setups (Bearish Harami, Bullish Harami, Engulfing)...
       </td></tr>`;
       if (emptyState) emptyState.style.display = 'none';
     }
 
-    // Direct Dynamic Fetch from Tradejini CubePlus Live Screener API
-    fetch('/api/tradejini/screener')
+    const daysParam = encodeURIComponent(currentFilter.lookback || 10);
+    const minTrendParam = encodeURIComponent(currentFilter.trendLength || 3);
+
+    // Direct Dynamic Fetch from Tradejini CubePlus Live Daily (1D) Screener API
+    fetch(`./api/tradejini/screener?days=${daysParam}&minTrend=${minTrendParam}`)
       .then(res => res.ok ? res.json() : null)
       .then(tjData => {
         if (tjData && tjData.s === 'ok' && Array.isArray(tjData.rows)) {
@@ -177,6 +267,19 @@ const AAAScreenerModule = (function () {
       });
   }
 
+  function getStatusBadgeStyle(status) {
+    if (status === 'TARGET_2_HIT') {
+      return 'background:#dcfce7; color:#15803d; border:1px solid #86efac;';
+    }
+    if (status === 'TARGET_1_HIT') {
+      return 'background:#ecfdf5; color:#047857; border:1px solid #6ee7b7;';
+    }
+    if (status === 'SL_HIT') {
+      return 'background:#fef2f2; color:#b91c1c; border:1px solid #fca5a5;';
+    }
+    return 'background:#eff6ff; color:#1d4ed8; border:1px solid #93c5fd;';
+  }
+
   function renderTable() {
     let filtered = allSignals.slice();
 
@@ -185,6 +288,11 @@ const AAAScreenerModule = (function () {
 
     if (currentFilter.pattern) {
       filtered = filtered.filter(s => s.pattern === currentFilter.pattern);
+    }
+
+    if (currentFilter.trendLength) {
+      const minT = Number(currentFilter.trendLength) || 3;
+      filtered = filtered.filter(s => Number(s.trendLength || 3) >= minT);
     }
 
     if (currentFilter.search) {
@@ -208,20 +316,30 @@ const AAAScreenerModule = (function () {
 
     tbody.innerHTML = filtered.map(s => {
       const isBuy = s.type === 'BUY';
-      const typeBadge = isBuy ? '<span class="aaa-pill aaa-pill-buy">🟢 BUY</span>' : '<span class="aaa-pill aaa-pill-sell">🔴 SELL</span>';
+      const typeBadge = isBuy ? '<span class="aaa-pill aaa-pill-buy">🟢 BUY (1D)</span>' : '<span class="aaa-pill aaa-pill-sell">🔴 SELL (1D)</span>';
+      const statusStyle = getStatusBadgeStyle(s.status || 'ACTIVE');
+      const statusText = s.statusText || '🟢 ट्रेड चालू (Active)';
       const trendBadge = isBuy
-        ? `<span class="aaa-trend-badge down">📉 ${s.trendLength} Red</span>`
-        : `<span class="aaa-trend-badge up">📈 ${s.trendLength} Green</span>`;
+        ? `<span class="aaa-trend-badge down">📉 ${s.trendLength} Red Days</span>`
+        : `<span class="aaa-trend-badge up">📈 ${s.trendLength} Green Days</span>`;
 
       return `
-        <tr>
+        <tr style="${s.status === 'SL_HIT' ? 'opacity:0.86;' : ''}">
           <td>
-            <div class="aaa-sym-title">${s.symbol}</div>
-            <div class="aaa-sym-sub">${s.name}</div>
+            <div class="aaa-sym-title">${s.symbol} <span style="font-size:11px; color:${isBuy ? '#059669' : '#dc2626'}; font-weight:700;">(LTP: ₹${s.ltp || s.entry})</span></div>
+            <div class="aaa-sym-sub">${s.name} ${s.date ? '&bull; 📅 ' + s.date : ''}</div>
           </td>
-          <td>${typeBadge}</td>
+          <td>
+            <div style="display:flex; flex-direction:column; gap:4px; align-items:flex-start;">
+              ${typeBadge}
+              <span style="font-size:10px; font-weight:800; padding:2px 7px; border-radius:999px; white-space:nowrap; ${statusStyle}">
+                ${statusText}
+              </span>
+            </div>
+          </td>
           <td>
             <span class="aaa-pattern-tag">${s.pattern}</span>
+            ${s.ohlcSummary ? `<div style="font-size:10px; color:#475569; margin-top:4px; line-height:1.35; max-width:290px;">🕯️ ${s.ohlcSummary}</div>` : ''}
           </td>
           <td>${trendBadge}</td>
           <td class="aaa-price">₹${s.entry}</td>
@@ -231,10 +349,10 @@ const AAAScreenerModule = (function () {
           <td class="aaa-price">₹${s.risk}</td>
           <td>
             <button class="aaa-action-btn" onclick="AAAScreenerModule.openChartModal('${s.id}')">
-              🔍 चार्ट
+              🔍 1D चार्ट
             </button>
             <button class="aaa-action-btn-primary" onclick="AAAScreenerModule.openInMainPortal('${s.symbol}')">
-              📊 लोड
+              📊 लोड (1D)
             </button>
           </td>
         </tr>
@@ -248,8 +366,8 @@ const AAAScreenerModule = (function () {
     currentChartData = s;
     const modal = document.getElementById('aaaChartModal');
     if (!modal) return;
-    document.getElementById('aaaModalSymbol').textContent = `${s.symbol} - ${s.pattern} (${s.type})`;
-    document.getElementById('aaaModalSubtitle').textContent = `एन्ट्री: ₹${s.entry} | SL: ₹${s.stopLoss} | Tgt 1: ₹${s.target1} | Tgt 2: ₹${s.target2}`;
+    document.getElementById('aaaModalSymbol').textContent = `${s.symbol} - ${s.pattern} (${s.type} • ${s.statusText || 'Active'})`;
+    document.getElementById('aaaModalSubtitle').textContent = `एन्ट्री: ₹${s.entry} | SL: ₹${s.stopLoss} | Tgt 1: ₹${s.target1} | Tgt 2: ₹${s.target2} | चालू भाव (LTP): ₹${s.ltp || s.entry}${s.ohlcSummary ? '  •  ' + s.ohlcSummary : ''}`;
     modal.classList.add('active');
     setTimeout(() => drawCandlestickModal(s), 50);
   }
@@ -264,7 +382,7 @@ const AAAScreenerModule = (function () {
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     const width = canvas.parentElement.clientWidth || 750;
-    const height = 360;
+    const height = 380;
     canvas.width = width * window.devicePixelRatio;
     canvas.height = height * window.devicePixelRatio;
     canvas.style.width = width + 'px';
@@ -276,7 +394,7 @@ const AAAScreenerModule = (function () {
     const candles = s.candles || [];
     if (candles.length === 0) return;
 
-    const margin = { top: 20, right: 65, bottom: 30, left: 15 };
+    const margin = { top: 26, right: 80, bottom: 32, left: 15 };
     const plotW = width - margin.left - margin.right;
     const plotH = height - margin.top - margin.bottom;
 
@@ -285,7 +403,11 @@ const AAAScreenerModule = (function () {
       minP = Math.min(minP, c.low);
       maxP = Math.max(maxP, c.high);
     });
-    const pad = (maxP - minP) * 0.08 || 1;
+    if (s.entry) { minP = Math.min(minP, s.entry); maxP = Math.max(maxP, s.entry); }
+    if (s.stopLoss) { minP = Math.min(minP, s.stopLoss); maxP = Math.max(maxP, s.stopLoss); }
+    if (s.target1) { minP = Math.min(minP, s.target1); maxP = Math.max(maxP, s.target1); }
+
+    const pad = (maxP - minP) * 0.10 || 1;
     minP -= pad;
     maxP += pad;
 
@@ -307,7 +429,28 @@ const AAAScreenerModule = (function () {
     }
 
     const step = plotW / candles.length;
-    const barW = Math.max(step * 0.65, 4);
+    const barW = Math.max(step * 0.62, 5);
+
+    // Highlight Pattern Candles (2 or 3 candles ending at signalIdx)
+    const patBars = Number(s.patternBars) || (String(s.pattern).includes('Star') ? 3 : 2);
+    const sigOffset = Number(s.signalOffsetFromEnd) || 0;
+    const sigIdx = Math.max(0, (candles.length - 1) - sigOffset);
+    const patStartIdx = Math.max(0, sigIdx - patBars + 1);
+
+    const boxX1 = margin.left + patStartIdx * step + 2;
+    const boxX2 = margin.left + (sigIdx + 1) * step - 2;
+    ctx.fillStyle = s.type === 'BUY' ? 'rgba(16, 185, 129, 0.09)' : 'rgba(239, 68, 68, 0.09)';
+    ctx.strokeStyle = s.type === 'BUY' ? '#10b981' : '#ef4444';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([4, 3]);
+    ctx.fillRect(boxX1, margin.top, boxX2 - boxX1, plotH);
+    ctx.strokeRect(boxX1, margin.top, boxX2 - boxX1, plotH);
+    ctx.setLineDash([]);
+
+    ctx.fillStyle = s.type === 'BUY' ? '#047857' : '#b91c1c';
+    ctx.font = 'bold 11px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(`★ ${s.pattern} (${candles[sigIdx] ? candles[sigIdx].date : '1D'})`, (boxX1 + boxX2) / 2, margin.top - 7);
 
     candles.forEach((c, i) => {
       const x = margin.left + i * step + step / 2;
@@ -339,27 +482,28 @@ const AAAScreenerModule = (function () {
       ctx.fillRect(x - barW / 2, top, barW, h);
 
       // Date Label
-      if (i % 3 === 0 || i === candles.length - 1) {
-        ctx.fillStyle = '#94a3b8';
-        ctx.font = '10px sans-serif';
+      if (i % 2 === 0 || i === candles.length - 1 || i === sigIdx) {
+        ctx.fillStyle = i === sigIdx ? '#0f172a' : '#94a3b8';
+        ctx.font = i === sigIdx ? 'bold 10px sans-serif' : '10px sans-serif';
         ctx.textAlign = 'center';
         ctx.fillText(c.date || `C${i}`, x, height - margin.bottom + 16);
       }
     });
 
-    // Entry & SL Overlay lines
+    // Entry, SL & Target Overlay lines
     ctx.textAlign = 'right';
     if (s.entry) {
       const yEnt = getY(s.entry);
       ctx.strokeStyle = '#2563eb';
       ctx.lineWidth = 2;
+      ctx.setLineDash([]);
       ctx.beginPath();
       ctx.moveTo(margin.left, yEnt);
       ctx.lineTo(margin.left + plotW, yEnt);
       ctx.stroke();
       ctx.fillStyle = '#2563eb';
       ctx.font = 'bold 11px sans-serif';
-      ctx.fillText(`एन्ट्री: ₹${s.entry}`, margin.left + plotW - 8, yEnt - 6);
+      ctx.fillText(`एन्ट्री (Close): ₹${s.entry}`, margin.left + plotW - 8, yEnt - 6);
     }
     if (s.stopLoss) {
       const ySl = getY(s.stopLoss);
@@ -371,13 +515,43 @@ const AAAScreenerModule = (function () {
       ctx.lineTo(margin.left + plotW, ySl);
       ctx.stroke();
       ctx.fillStyle = '#ef4444';
+      ctx.font = 'bold 11px sans-serif';
       ctx.fillText(`SL: ₹${s.stopLoss}`, margin.left + plotW - 8, ySl + 14);
     }
+    if (s.target1) {
+      const yT1 = getY(s.target1);
+      ctx.strokeStyle = '#059669';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(margin.left, yT1);
+      ctx.lineTo(margin.left + plotW, yT1);
+      ctx.stroke();
+      ctx.fillStyle = '#059669';
+      ctx.font = 'bold 11px sans-serif';
+      ctx.fillText(`टार्गेट १: ₹${s.target1}`, margin.left + plotW - 8, yT1 - 5);
+    }
+    ctx.setLineDash([]);
   }
 
   function openInMainPortal(sym) {
+    closeChartModal();
     if (window.switchView) {
       window.switchView('chart');
+    }
+    if (window.AppState) {
+      window.AppState.chartType = 'candlestick';
+      window.AppState.currentTimeframe = 'D';
+      const typeBtns = document.querySelectorAll('.chart-type-btn');
+      typeBtns.forEach(b => {
+        if (b.getAttribute('data-type') === 'candlestick') b.classList.add('active');
+        else b.classList.remove('active');
+      });
+      const tfBtns = document.querySelectorAll('.tf-btn');
+      tfBtns.forEach(b => {
+        if (b.getAttribute('data-tf') === 'D') b.classList.add('active');
+        else b.classList.remove('active');
+      });
     }
     if (window.selectStock) {
       window.selectStock(sym);

@@ -708,24 +708,75 @@ window.switchView = switchView;
 // 3. Major Indices Definition & Application State
 // =============================================================================
 const MAJOR_INDICES = [
-  { symbol: "NIFTY 50", key: "nifty", name: "NIFTY 50 Benchmark Index", exchange: "NSE", yahoo: "^NSEI", basePrice: 23313.85, prevClose: 23270.60 },
-  { symbol: "BANK NIFTY", key: "banknifty", name: "NIFTY Bank Index", exchange: "NSE", yahoo: "^NSEBANK", basePrice: 56218.35, prevClose: 56112.70 },
-  { symbol: "SENSEX", key: "sensex", name: "BSE SENSEX Benchmark Index", exchange: "BSE", yahoo: "^BSESN", basePrice: 74456.04, prevClose: 74179.39 },
-  { symbol: "MIDCAP NIFTY", key: "midcap", name: "NIFTY Midcap 50 Index", exchange: "NSE", yahoo: "^NSEMDCP50", basePrice: 17816.30, prevClose: 17765.20 },
-  { symbol: "FIN NIFTY", key: "finnifty", name: "NIFTY Financial Services Index", exchange: "NSE", yahoo: "NIFTY_FIN_SERVICE.NS", basePrice: 25405.25, prevClose: 25318.35 }
+  { symbol: "NIFTY 50", key: "nifty", name: "NIFTY 50 Benchmark Index", exchange: "NSE", yahoo: "^NSEI", basePrice: 22703.30, prevClose: 22553.00 },
+  { symbol: "BANK NIFTY", key: "banknifty", name: "NIFTY Bank Index", exchange: "NSE", yahoo: "^NSEBANK", basePrice: 54998.80, prevClose: 54610.00 },
+  { symbol: "SENSEX", key: "sensex", name: "BSE SENSEX Benchmark Index", exchange: "BSE", yahoo: "^BSESN", basePrice: 72886.70, prevClose: 72450.00 },
+  { symbol: "MIDCAP NIFTY", key: "midcap", name: "NIFTY Midcap Select Index", exchange: "NSE", yahoo: "^NSEMDCP50", basePrice: 13798.00, prevClose: 13680.00 },
+  { symbol: "FIN NIFTY", key: "finnifty", name: "NIFTY Financial Services Index", exchange: "NSE", yahoo: "NIFTY_FIN_SERVICE.NS", basePrice: 24877.40, prevClose: 24710.00 }
 ];
 
-function updateMajorIndicesPrices() {
-  const cache = window.REAL_MARKET_CACHE || {};
+window.LIVE_TJ_QUOTES = {};
+
+function applyQuoteToUniverse(sym, q) {
+  if (!sym || !q || !q.price) return;
+  const cleanSym = sym.toUpperCase().trim();
+  window.LIVE_TJ_QUOTES[cleanSym] = q;
+
   MAJOR_INDICES.forEach(idx => {
-    const entry = cache[idx.key];
-    if (entry) {
-      if (entry.p) idx.basePrice = entry.p;
-      if (entry.prev) idx.prevClose = entry.prev;
-      if (entry.m5 && entry.m5.length > 0) {
-        const last = entry.m5[entry.m5.length - 1];
-        if (last && last[2]) idx.basePrice = last[2];
+    if (idx.symbol.toUpperCase() === cleanSym || idx.key.toUpperCase() === cleanSym) {
+      idx.basePrice = q.price;
+      idx.price = q.price;
+      idx.prevClose = q.prevClose || q.open || q.price;
+      idx.change = q.change;
+      idx.changePercent = q.changePercent;
+    }
+  });
+
+  const allStocks = window.NIFTY_500_STOCKS || [];
+  allStocks.forEach(s => {
+    if (s.symbol && s.symbol.toUpperCase() === cleanSym) {
+      s.price = q.price;
+      s.basePrice = q.price;
+      s.prevClose = q.prevClose || q.open || q.price;
+      s.change = q.change;
+      s.changePercent = q.changePercent;
+    }
+  });
+
+  const allMcx = window.MCX_COMMODITIES || [];
+  allMcx.forEach(m => {
+    if (m.symbol && m.symbol.toUpperCase() === cleanSym) {
+      m.price = q.price;
+      m.basePrice = q.price;
+      m.prevClose = q.prevClose || q.open || q.price;
+      m.change = q.change;
+      m.changePercent = q.changePercent;
+    }
+  });
+}
+
+async function syncLiveQuotesFromTradejini() {
+  try {
+    const res = await fetch('./api/tradejini/quotes');
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data && data.s === 'ok' && data.quotes) {
+      Object.keys(data.quotes).forEach(sym => {
+        applyQuoteToUniverse(sym, data.quotes[sym]);
+      });
+      if (typeof window.renderWatchlistItems === 'function') {
+        window.renderWatchlistItems();
       }
+    }
+  } catch (e) {}
+}
+
+function updateMajorIndicesPrices() {
+  MAJOR_INDICES.forEach(idx => {
+    const q = window.LIVE_TJ_QUOTES && window.LIVE_TJ_QUOTES[idx.symbol.toUpperCase()];
+    if (q && q.price) {
+      idx.basePrice = q.price;
+      idx.prevClose = q.prevClose || idx.prevClose;
     }
   });
 }
@@ -735,13 +786,13 @@ const AppState = {
     symbol: "NIFTY 50",
     name: "NIFTY 50 Benchmark Index",
     exchange: "NSE",
-    price: 23313.85,
-    prevClose: 23270.60,
-    change: 43.25,
-    changePercent: 0.19,
+    price: 22703.30,
+    prevClose: 22553.00,
+    change: 150.30,
+    changePercent: 0.67,
     yahoo: "^NSEI"
   },
-  prevClosePrice: 23270.60,
+  prevClosePrice: 22553.00,
   currentTimeframe: "5",
   chartType: "candlestick",
   indicators: {
@@ -853,25 +904,7 @@ function startCandleCountdown() {
 }
 
 function handleCandleRollover() {
-  if (!AppState.liveCandles || AppState.liveCandles.length === 0) return;
-  const last = AppState.liveCandles[AppState.liveCandles.length - 1];
-  const now = new Date();
-  const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-  const fullDate = now.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
-
-  const newCandle = {
-    date: timeStr,
-    fullDate: fullDate,
-    time: `${timeStr} IST`,
-    open: last.close,
-    high: last.close,
-    low: last.close,
-    close: last.close,
-    volume: 100
-  };
-
-  AppState.liveCandles.push(newCandle);
-  renderEChart();
+  fetchLiveCandlesFromTradejini(AppState.currentAsset, false);
 }
 
 function startLivePoller() {
@@ -879,33 +912,66 @@ function startLivePoller() {
     clearInterval(AppState.livePollerTimer);
   }
 
+  syncLiveQuotesFromTradejini();
+
   // Poll Tradejini CubePlus live feed every 5 seconds continuously
   AppState.livePollerTimer = setInterval(() => {
-    fetchLiveCandlesFromTradejini(AppState.currentAsset);
+    fetchLiveCandlesFromTradejini(AppState.currentAsset, false);
   }, 5000);
+
+  if (AppState.quotesPollerTimer) {
+    clearInterval(AppState.quotesPollerTimer);
+  }
+  AppState.quotesPollerTimer = setInterval(() => {
+    syncLiveQuotesFromTradejini();
+  }, 10000);
 }
 
-async function fetchLiveCandlesFromTradejini(asset) {
+async function fetchLiveCandlesFromTradejini(asset, resetZoom = false) {
   if (!asset || !asset.symbol) return;
   const sym = asset.symbol;
   const tf = AppState.currentTimeframe;
 
   try {
-    const res = await fetch(`/api/tradejini/candles?symbol=${encodeURIComponent(sym)}&interval=${tf}&days=7`);
+    const days = tf === 'D' ? 60 : 7;
+    const res = await fetch(`./api/tradejini/candles?symbol=${encodeURIComponent(sym)}&interval=${tf}&days=${days}`);
     if (!res.ok) return;
     const data = await res.json();
     if (data.s === 'ok' && Array.isArray(data.candles) && data.candles.length > 0) {
       const incoming = data.candles;
       AppState.liveCandles = incoming;
       const last = incoming[incoming.length - 1];
+      if (data.quote && data.quote.prevClose) {
+        AppState.prevClosePrice = data.quote.prevClose;
+        AppState.currentAsset.prevClose = data.quote.prevClose;
+        applyQuoteToUniverse(sym, data.quote);
+      } else if (last) {
+        for (let i = incoming.length - 2; i >= 0; i--) {
+          if (incoming[i].fullDate && incoming[i].fullDate !== last.fullDate) {
+            AppState.prevClosePrice = incoming[i].close;
+            AppState.currentAsset.prevClose = incoming[i].close;
+            break;
+          }
+        }
+      }
       if (last) {
         AppState.currentAsset.price = last.close;
         updateHeaderPrice(last.close);
         updateOHLCDisplay(last);
+        if (!data.quote) {
+          const pc = AppState.prevClosePrice || incoming[0].open;
+          const chg = Number((last.close - pc).toFixed(2));
+          const pct = pc > 0 ? Number(((chg / pc) * 100).toFixed(2)) : 0;
+          applyQuoteToUniverse(sym, { symbol: sym, price: last.close, prevClose: pc, change: chg, changePercent: pct });
+        }
+        if (typeof window.renderWatchlistItems === 'function') {
+          window.renderWatchlistItems();
+        }
       }
-      if (AppState.chart) {
-        renderEChart(false);
+      if (resetZoom) {
+        AppState._zoomNeedsReset = true;
       }
+      renderEChart(resetZoom);
     }
   } catch (e) {
     // Continuous polling catch
@@ -1000,12 +1066,11 @@ function renderEChart(showAnimation = true) {
       const haLow = Math.min(c.low, haOpen, haClose);
       prevHaOpen = haOpen;
       prevHaClose = haClose;
-      return [
-        Number(haOpen.toFixed(2)),
-        Number(haClose.toFixed(2)),
-        Number(haLow.toFixed(2)),
-        Number(haHigh.toFixed(2))
-      ];
+      c.haOpen = Number(haOpen.toFixed(2));
+      c.haClose = Number(haClose.toFixed(2));
+      c.haLow = Number(haLow.toFixed(2));
+      c.haHigh = Number(haHigh.toFixed(2));
+      return [c.haOpen, c.haClose, c.haLow, c.haHigh];
     });
   } else {
     // Pure Standard Japanese Candlesticks with raw OHLC and real wicks
@@ -1255,24 +1320,31 @@ function renderEChart(showAnimation = true) {
         // Dynamically update the top status strip as cursor glides across candles
         updateOHLCDisplay(c, rsi, rm);
 
-        const diff = Number((c.close - c.open).toFixed(2));
-        const pct = c.open > 0 ? Number(((diff / c.open) * 100).toFixed(2)) : 0;
+        const isHa = AppState.chartType === 'heikinashi' && c.haOpen != null;
+        const dispOpen = isHa ? c.haOpen : c.open;
+        const dispHigh = isHa ? c.haHigh : c.high;
+        const dispLow = isHa ? c.haLow : c.low;
+        const dispClose = isHa ? c.haClose : c.close;
+        const lblPrefix = isHa ? 'HA ' : '';
+
+        const diff = Number((dispClose - dispOpen).toFixed(2));
+        const pct = dispOpen > 0 ? Number(((diff / dispOpen) * 100).toFixed(2)) : 0;
         const isUp = diff >= 0;
         const color = isUp ? '#089981' : '#f23645';
         const sign = isUp ? '+' : '';
         const fDate = c.fullDate || '23-Sep-2026';
         const tStr = c.time || c.date || '';
 
-        return '<div style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif; min-width:180px;">' +
+        return '<div style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif; min-width:190px;">' +
           '<div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #e2e8f0; padding-bottom:6px; margin-bottom:6px;">' +
             '<span style="font-weight:700; color:#1e293b; font-size:12px;">📅 ' + fDate + '</span>' +
             '<span style="background:#eff6ff; color:#1d4ed8; font-weight:700; font-size:11px; padding:2px 6px; border-radius:4px; border:1px solid #bfdbfe;">⏰ ' + tStr + '</span>' +
           '</div>' +
           '<div style="display:grid; grid-template-columns:1fr 1fr; gap:4px 12px; font-size:11px; margin-bottom:6px;">' +
-            '<div><span style="color:#64748b;">Open:</span> <strong style="color:#0f172a;">' + c.open.toFixed(2) + '</strong></div>' +
-            '<div><span style="color:#64748b;">High:</span> <strong style="color:#089981;">' + c.high.toFixed(2) + '</strong></div>' +
-            '<div><span style="color:#64748b;">Low:</span> <strong style="color:#f23645;">' + c.low.toFixed(2) + '</strong></div>' +
-            '<div><span style="color:#64748b;">Close:</span> <strong style="color:' + color + '; font-weight:700;">' + c.close.toFixed(2) + '</strong></div>' +
+            '<div><span style="color:#64748b;">' + lblPrefix + 'Open:</span> <strong style="color:#0f172a;">' + dispOpen.toFixed(2) + '</strong></div>' +
+            '<div><span style="color:#64748b;">' + lblPrefix + 'High:</span> <strong style="color:#089981;">' + dispHigh.toFixed(2) + '</strong></div>' +
+            '<div><span style="color:#64748b;">' + lblPrefix + 'Low:</span> <strong style="color:#f23645;">' + dispLow.toFixed(2) + '</strong></div>' +
+            '<div><span style="color:#64748b;">' + lblPrefix + 'Close:</span> <strong style="color:' + color + '; font-weight:700;">' + dispClose.toFixed(2) + '</strong></div>' +
           '</div>' +
           '<div style="display:flex; justify-content:space-between; font-size:11px; padding-top:4px; border-top:1px dashed #e2e8f0;">' +
             '<span><span style="color:#64748b;">Change:</span> <strong style="color:' + color + ';">' + sign + diff + ' (' + sign + pct + '%)</strong></span>' +
@@ -1384,14 +1456,20 @@ function updateOHLCDisplay(candle, rsi, rsiMa) {
   if (elDate) elDate.textContent = candle.fullDate || '23-Sep-2026';
   if (elTime) elTime.textContent = candle.time || candle.date || '--:--';
 
+  const isHa = AppState.chartType === 'heikinashi' && candle.haOpen != null;
+  const dispOpen = isHa ? candle.haOpen : candle.open;
+  const dispHigh = isHa ? candle.haHigh : candle.high;
+  const dispLow = isHa ? candle.haLow : candle.low;
+  const dispClose = isHa ? candle.haClose : candle.close;
+
   const o = document.getElementById('val-open');
   const h = document.getElementById('val-high');
   const l = document.getElementById('val-low');
   const c = document.getElementById('val-close');
-  if (o) o.textContent = candle.open.toFixed(2);
-  if (h) h.textContent = candle.high.toFixed(2);
-  if (l) l.textContent = candle.low.toFixed(2);
-  if (c) c.textContent = candle.close.toFixed(2);
+  if (o) o.textContent = dispOpen.toFixed(2);
+  if (h) h.textContent = dispHigh.toFixed(2);
+  if (l) l.textContent = dispLow.toFixed(2);
+  if (c) c.textContent = dispClose.toFixed(2);
 
   const rEl = document.getElementById('val-rsi');
   const rmEl = document.getElementById('val-rsi-ma');
@@ -1631,130 +1709,13 @@ function generateRealisticCandles(basePrice, tf) {
 }
 
 function loadCandlesForActiveAsset() {
-  const sym = AppState.currentAsset.symbol;
-  const tf = AppState.currentTimeframe;
-
-  // 1. Direct Dynamic Fetch from Tradejini CubePlus Live API
-  fetch(`/api/tradejini/candles?symbol=${encodeURIComponent(sym)}&interval=${tf}`)
-    .then(res => res.ok ? res.json() : null)
-    .then(data => {
-      if (data && data.s === 'ok' && Array.isArray(data.candles) && data.candles.length > 0) {
-        AppState.liveCandles = data.candles;
-        const last = data.candles[data.candles.length - 1];
-        if (last) {
-          AppState.currentAsset.price = last.close;
-          updateHeaderPrice(last.close);
-        }
-        renderEChart();
-      }
-    })
-    .catch(() => {});
-
-  const cache = window.REAL_MARKET_CACHE || {};
-  const cacheKey = getCacheKeyForSymbol(sym);
-  const cacheEntry = cache[cacheKey];
-
-  let rawCandles = null;
-
-  if (cacheEntry) {
-    // 1. Prepare base 5m data and ensure it covers the FULL trading day up to 15:30!
-    let full5m = cacheEntry.m5;
-    if (full5m && full5m.length > 0) {
-      full5m = ensureFullDay5mCandles(full5m, cacheEntry.p || AppState.currentAsset.price, cacheEntry.h, cacheEntry.l);
-    }
-
-    if (tf === "1" && cacheEntry.m1 && cacheEntry.m1.length > 0) {
-      rawCandles = cacheEntry.m1;
-    } else if (tf === "5") {
-      rawCandles = full5m || cacheEntry.m5;
-    } else if (tf === "15") {
-      if (full5m && full5m.length > 0) {
-        rawCandles = aggregateCandles(full5m, 3);
-      }
-    } else if (tf === "60") {
-      if (full5m && full5m.length > 0) {
-        rawCandles = aggregateCandles(full5m, 12);
-      }
-    } else if (tf === "D" && cacheEntry.d1 && cacheEntry.d1.length > 0) {
-      rawCandles = Array.isArray(cacheEntry.d1[0]) ? cacheEntry.d1 : [cacheEntry.d1];
-    }
-  }
-
-  let candles = [];
-
-  if (rawCandles && rawCandles.length > 0) {
-    candles = rawCandles.map(raw => {
-      const itemArr = Array.isArray(raw) ? raw : (raw && raw.value ? raw.value : raw);
-      if (!itemArr || itemArr.length < 5) return null;
-
-      const ts = Number(itemArr[0]);
-      const dt = new Date(ts > 1e11 ? ts : ts * 1000);
-      let dateStr = "";
-      let fullDateStr = "";
-      let timeStr = "";
-
-      if (isNaN(dt.getTime())) {
-        dateStr = "09:15";
-        fullDateStr = "23-Sep-2026";
-        timeStr = "09:15 IST";
-      } else if (tf === "D") {
-        dateStr = dt.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
-        fullDateStr = dt.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
-        timeStr = "Close";
-      } else {
-        const hh = String(dt.getHours()).padStart(2, '0');
-        const mm = String(dt.getMinutes()).padStart(2, '0');
-        dateStr = `${hh}:${mm}`;
-        fullDateStr = dt.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
-        timeStr = `${hh}:${mm} IST`;
-      }
-
-      const open = Number(itemArr[1]);
-      const close = Number(itemArr[2]);
-      const low = Number(itemArr[3]);
-      const high = Number(itemArr[4]);
-      const volume = Number(itemArr[5] || 100);
-
-      if (isNaN(open) || isNaN(close)) return null;
-
-      return {
-        date: dateStr,
-        fullDate: fullDateStr,
-        time: timeStr,
-        open: Number(open.toFixed(2)),
-        close: Number(close.toFixed(2)),
-        low: Number(low.toFixed(2)),
-        high: Number(high.toFixed(2)),
-        volume: volume
-      };
-    }).filter(c => c !== null);
-
-    const last = candles[candles.length - 1];
-    if (last) {
-      AppState.currentAsset.price = last.close;
-      if (cacheEntry && cacheEntry.prev) {
-        AppState.prevClosePrice = cacheEntry.prev;
-        AppState.currentAsset.prevClose = cacheEntry.prev;
-      }
-      updateHeaderPrice(last.close);
-    }
-  }
-
-  if (candles.length === 0) {
-    // Fallback: Real Japanese candlestick random walk with wicks
-    candles = generateRealisticCandles(AppState.currentAsset.price || 1000, tf);
-  }
-
-  AppState.liveCandles = candles;
-  renderEChart();
-
-  // Also query live proxy asynchronously
-  fetchLiveCandlesFromProxy(AppState.currentAsset);
+  AppState._zoomNeedsReset = true;
+  fetchLiveCandlesFromTradejini(AppState.currentAsset, true);
 }
 
 function selectStock(symbol) {
   const sym = symbol.toUpperCase().trim();
-  const cache = window.REAL_MARKET_CACHE || {};
+  const liveQuotes = window.LIVE_TJ_QUOTES || {};
   const nifty500 = window.NIFTY_500_STOCKS || [];
   const mcx = window.MCX_COMMODITIES || [];
 
@@ -1763,9 +1724,9 @@ function selectStock(symbol) {
   // 1. Check Major Indices
   const idxMatch = MAJOR_INDICES.find(m => m.symbol.toUpperCase() === sym || m.key === sym.toLowerCase() || (m.symbol === "NIFTY 50" && sym === "NIFTY"));
   if (idxMatch) {
-    const cEntry = cache[idxMatch.key];
-    const p = cEntry ? (cEntry.p || (cEntry.m5 && cEntry.m5[cEntry.m5.length - 1][2]) || idxMatch.basePrice) : idxMatch.basePrice;
-    const pc = cEntry && cEntry.prev ? cEntry.prev : idxMatch.prevClose;
+    const lq = liveQuotes[idxMatch.symbol.toUpperCase()];
+    const p = lq ? lq.price : idxMatch.basePrice;
+    const pc = lq ? lq.prevClose : idxMatch.prevClose;
     asset = {
       symbol: idxMatch.symbol,
       name: idxMatch.name,
@@ -1780,10 +1741,9 @@ function selectStock(symbol) {
   if (!asset) {
     const mcxMatch = mcx.find(m => m.symbol.toUpperCase() === sym || m.name.toUpperCase() === sym || (sym === "GOLD" && m.symbol === "GOLD") || (sym === "CRUDE OIL" && m.symbol === "CRUDEOIL"));
     if (mcxMatch) {
-      const commKey = getCacheKeyForSymbol(mcxMatch.symbol);
-      const cEntry = cache[commKey];
-      const p = cEntry ? (cEntry.p || mcxMatch.price) : mcxMatch.price;
-      const pc = cEntry && cEntry.prev ? cEntry.prev : mcxMatch.prevClose;
+      const lq = liveQuotes[mcxMatch.symbol.toUpperCase()];
+      const p = lq ? lq.price : mcxMatch.price;
+      const pc = lq ? lq.prevClose : mcxMatch.prevClose;
       asset = {
         symbol: mcxMatch.symbol,
         name: mcxMatch.name,
@@ -1800,9 +1760,9 @@ function selectStock(symbol) {
   if (!asset) {
     const stk = nifty500.find(s => s.symbol.toUpperCase() === sym || s.key === sym.toLowerCase());
     if (stk) {
-      const cEntry = stk.key ? cache[stk.key] : null;
-      const p = cEntry ? (cEntry.p || (cEntry.m5 && cEntry.m5[cEntry.m5.length - 1][2]) || stk.basePrice) : (stk.price || stk.basePrice || 1000);
-      const pc = cEntry && cEntry.prev ? cEntry.prev : (stk.prevClose || (p * 0.995));
+      const lq = liveQuotes[stk.symbol.toUpperCase()];
+      const p = lq ? lq.price : (stk.price || stk.basePrice || 0);
+      const pc = lq ? lq.prevClose : (stk.prevClose || p);
       asset = {
         symbol: stk.symbol,
         name: stk.name,
@@ -1815,12 +1775,13 @@ function selectStock(symbol) {
   }
 
   if (!asset) {
+    const lq = liveQuotes[sym];
     asset = {
       symbol: sym,
       name: sym,
       exchange: "NSE",
-      price: 1000.00,
-      prevClose: 995.00,
+      price: lq ? lq.price : 0,
+      prevClose: lq ? lq.prevClose : 0,
       yahoo: `${sym}.NS`
     };
   }
@@ -1834,7 +1795,9 @@ function selectStock(symbol) {
   const elTitle = document.getElementById('active-stock-title');
   if (elBadge) elBadge.textContent = asset.exchange;
   if (elTitle) elTitle.textContent = `${asset.symbol} - ${asset.name}`;
-  updateHeaderPrice(asset.price);
+  if (asset.price > 0) {
+    updateHeaderPrice(asset.price);
+  }
 
   // Sync Header Index Chips Active State
   const chips = document.querySelectorAll('.index-chip');
@@ -2230,6 +2193,7 @@ function initWatchlistSidebar() {
     });
   }
 
+  window.renderWatchlistItems = renderWatchlistItems;
   refreshDropdown();
   renderWatchlistItems();
 }

@@ -13,7 +13,7 @@
   <link rel="apple-touch-icon" href="./assets/logo.png" />
   <link rel="manifest" href="./manifest.json" />
 
-  <link rel="stylesheet" href="./assets/style.css" />
+  <link rel="stylesheet" href="./assets/style.css?v=20261007_5" />
   
   <!-- Standalone High-Speed Canvas Candlestick Engine (Apache ECharts) -->
   <script src="./assets/echarts.min.js"></script>
@@ -23,21 +23,19 @@
     }
   </script>
 
-  <!-- Core Data Feeds -->
-  <script src="./assets/mcx_data.js"></script>
-  <script src="./assets/nifty500_data.js"></script>
-  <script src="./assets/real_market_cache.js"></script>
+  <!-- Core Symbol Lists (Prices overwritten on load by Live Tradejini API) -->
+  <script src="./assets/mcx_data.js?v=20261007_5"></script>
+  <script src="./assets/nifty500_data.js?v=20261007_5"></script>
   <script>
     if (typeof NIFTY_500_STOCKS !== "undefined") window.NIFTY_500_STOCKS = NIFTY_500_STOCKS;
     if (typeof MCX_COMMODITIES !== "undefined") window.MCX_COMMODITIES = MCX_COMMODITIES;
-    if (typeof REAL_MARKET_CACHE !== "undefined") window.REAL_MARKET_CACHE = REAL_MARKET_CACHE;
   </script>
 
   <!-- Sub-Modules & Localization -->
-  <script src="./assets/cubeplus_feed.js"></script>
-  <script src="./assets/i18n.js"></script>
-  <script src="./assets/trade_setup.js"></script>
-  <script src="./assets/aaa_screener.js"></script>
+  <script src="./assets/cubeplus_feed.js?v=20261007_5"></script>
+  <script src="./assets/i18n.js?v=20261007_5"></script>
+  <script src="./assets/trade_setup.js?v=20261007_5"></script>
+  <script src="./assets/aaa_screener.js?v=20261007_5"></script>
 </head>
 <body>
 
@@ -154,8 +152,8 @@
               <div class="chart-symbol-info">
                 <span class="symbol-badge" id="active-stock-badge">NSE</span>
                 <span class="chart-symbol-name" id="active-stock-title">NIFTY 50</span>
-                <span class="chart-live-price" id="active-stock-price">₹23,315.64</span>
-                <span class="chart-live-change ticker-up" id="active-stock-change">+0.19%</span>
+                <span class="chart-live-price" id="active-stock-price">₹22,703.30</span>
+                <span class="chart-live-change ticker-up" id="active-stock-change">+0.00%</span>
                 
                 <!-- Live Candle Bar Countdown Pill -->
                 <div class="candle-countdown-chip" id="candle-countdown-chip" title="Remaining time until current candle bar closes">
@@ -220,7 +218,7 @@
             <div class="chart-status-strip">
               <div class="ohlc-display" id="chart-ohlc-display">
                 <span class="ohlc-dt-tag" style="background:#eff6ff; color:#1d4ed8; padding:2px 8px; border-radius:4px; border:1px solid #bfdbfe; font-weight:700; font-size:11px;">
-                  📅 <strong id="val-date">23-Sep-2026</strong> ⏰ <strong id="val-time">--:--</strong>
+                  📅 <strong id="val-date">--</strong> ⏰ <strong id="val-time">--:--</strong>
                 </span>
                 <span>O: <strong id="val-open">--</strong></span>
                 <span>H: <strong id="val-high">--</strong></span>
@@ -300,10 +298,10 @@
       <div class="ts-rules-card">
         <div class="ts-rules-icon">🎯</div>
         <div>
-          <div class="ts-rules-title">५-मिनिट Heikin Ashi रिव्हर्सल & CC (Confirmation Candle) सेटअप</div>
+          <div class="ts-rules-title">५-मिनिट Heikin Ashi + RSI(7) (80/20) रिव्हर्सल & CC (Confirmation Candle) सेटअप</div>
           <div class="ts-rules-sub">
-            नियम: आधीचा लाल ट्रेंड + हिरवी रिव्हर्सल कॅन्डल विथ Flat Bottom (No Lower Wick) = 🟢 BUY कॉल सेटअप. <br>
-            आधीचा हिरवा ट्रेंड + लाल रिव्हर्सल कॅन्डल विथ Flat Top (No Upper Wick) = 🔴 SELL पुट सेटअप.
+            नियम: <strong>३+ सलग लाल HA कॅन्डल्स</strong> + <strong>RSI(7) &lt; 20 (Oversold)</strong> + पहिली <strong>Flat Bottom (HA Open = HA Low)</strong> हिरवी HA कॅन्डल = 🟢 BUY कॉल सेटअप (Entry: <strong>HA Close</strong> | SL: <strong>HA Low</strong>). <br>
+            <strong>३+ सलग हिरव्या HA कॅन्डल्स</strong> + <strong>RSI(7) &gt; 80 (Overbought)</strong> + पहिली <strong>Flat Top (HA Open = HA High)</strong> लाल HA कॅन्डल = 🔴 SELL पुट सेटअप (Entry: <strong>HA Close</strong> | SL: <strong>HA High</strong>).
           </div>
         </div>
       </div>
@@ -356,24 +354,24 @@
         <div class="aaa-rule-box aaa-buy-rule">
           <div class="aaa-rule-header">
             <span class="aaa-pill aaa-pill-buy">BUY SETUP</span>
-            <h3 style="color:#065f46;">खरेदी नियम (BUY Rules)</h3>
+            <h3 style="color:#065f46;">खरेदी नियम (BUY Rules - Daily 1D)</h3>
           </div>
           <ul>
-            <li><strong>ट्रेंड:</strong> कमीत कमी <strong>४ सलग Red कॅन्डल्स</strong> चा डाउनट्रेंड.</li>
-            <li><strong>पॅटर्न्स:</strong> Bullish Harami, Bullish Engulfing, Piercing Line, Morning Star.</li>
-            <li><strong>Entry:</strong> शेवटच्या Green कॅन्डलची <strong>Open Price</strong> | <strong>Stop Loss:</strong> मागील कॅन्डलचा <strong>Low</strong>.</li>
+            <li><strong>ट्रेंड:</strong> Daily (1D) चार्टवर <strong>Downtrend</strong> (सलग Red कॅन्डल्स / Swing Low).</li>
+            <li><strong>पॅटर्न्स:</strong> Bullish Harami, Bullish Engulfing, Bullish Piercing, Morning Star.</li>
+            <li><strong>Entry (Buy):</strong> रिव्हर्सल Green कॅन्डलची <strong>Close Price</strong> | <strong>SL:</strong> पॅटर्नचा <strong>Lowest Low</strong> (Mother/Candle Low).</li>
           </ul>
         </div>
 
         <div class="aaa-rule-box aaa-sell-rule">
           <div class="aaa-rule-header">
             <span class="aaa-pill aaa-pill-sell">SELL SETUP</span>
-            <h3 style="color:#991b1b;">विक्री नियम (SELL Rules)</h3>
+            <h3 style="color:#991b1b;">विक्री नियम (SELL Rules - Daily 1D)</h3>
           </div>
           <ul>
-            <li><strong>ट्रेंड:</strong> कमीत कमी <strong>४ सलग Green कॅन्डल्स</strong> चा अपट्रेंड.</li>
-            <li><strong>पॅटर्न्स:</strong> Bearish Harami, Bearish Engulfing, Dark Cloud Cover, Evening Star.</li>
-            <li><strong>Entry:</strong> शेवटच्या Red कॅन्डलची <strong>Close Price</strong> | <strong>Stop Loss:</strong> मागील कॅन्डलचा <strong>High</strong>.</li>
+            <li><strong>ट्रेंड:</strong> Daily (1D) चार्टवर <strong>Uptrend</strong> (सलग Green कॅन्डल्स / Swing High).</li>
+            <li><strong>पॅटर्न्स:</strong> Bearish Harami, Bearish Engulfing, Bearish Piercing, Evening Star.</li>
+            <li><strong>Entry (Sell):</strong> रिव्हर्सल Red कॅन्डलची <strong>Close Price</strong> | <strong>SL:</strong> पॅटर्नचा <strong>Highest High</strong> (Mother/Candle High).</li>
           </ul>
         </div>
       </div>
@@ -407,25 +405,28 @@
         </div>
 
         <select id="aaaPatternFilter" class="aaa-filter-select">
-          <option value="">सर्व पॅटर्न्स (All Patterns)</option>
-          <option value="Bullish Harami">Bullish Harami</option>
-          <option value="Bullish Engulfing">Bullish Engulfing</option>
-          <option value="Piercing Line">Piercing Line</option>
-          <option value="Bearish Harami">Bearish Harami</option>
-          <option value="Bearish Engulfing">Bearish Engulfing</option>
-          <option value="Dark Cloud Cover">Dark Cloud Cover</option>
+          <option value="">सर्व पॅटर्न्स (All Daily 1D Patterns)</option>
+          <option value="Bearish Harami">Bearish Harami (SELL - 1D)</option>
+          <option value="Bullish Harami">Bullish Harami (BUY - 1D)</option>
+          <option value="Bearish Engulfing">Bearish Engulfing (SELL - 1D)</option>
+          <option value="Bullish Engulfing">Bullish Engulfing (BUY - 1D)</option>
+          <option value="Bearish Piercing">Bearish Piercing (SELL - 1D)</option>
+          <option value="Bullish Piercing">Bullish Piercing (BUY - 1D)</option>
+          <option value="Evening Star">Evening Star (SELL - 1D)</option>
+          <option value="Morning Star">Morning Star (BUY - 1D)</option>
         </select>
 
         <select id="aaaLookbackFilter" class="aaa-filter-select">
-          <option value="3">मागील ३ दिवस (3 Days)</option>
-          <option value="5" selected>मागील ५ दिवस (5 Days)</option>
-          <option value="10">मागील १० दिवस (10 Days)</option>
+          <option value="3">मागील ३ दिवस (3 Daily Bars)</option>
+          <option value="5">मागील ५ दिवस (5 Daily Bars)</option>
+          <option value="10" selected>मागील १० दिवस (10 Daily Bars)</option>
+          <option value="15">मागील १५ दिवस (15 Daily Bars)</option>
         </select>
 
         <select id="aaaTrendFilter" class="aaa-filter-select">
-          <option value="3">३+ कॅन्डल्स ट्रेंड</option>
-          <option value="4" selected>४+ कॅन्डल्स ट्रेंड (Standard)</option>
-          <option value="5">५+ कॅन्डल्स ट्रेंड (Strong)</option>
+          <option value="3" selected>३+ Daily कॅन्डल्स ट्रेंड</option>
+          <option value="4">४+ Daily कॅन्डल्स ट्रेंड (Standard)</option>
+          <option value="5">५+ Daily कॅन्डल्स ट्रेंड (Strong)</option>
         </select>
 
         <div style="flex:1; max-width:220px;">
@@ -653,6 +654,6 @@
   </div>
 
   <!-- Core Main Application Logic -->
-  <script src="./assets/app.js"></script>
+  <script src="./assets/app.js?v=20261007_5"></script>
 </body>
 </html>
