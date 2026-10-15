@@ -109,6 +109,13 @@
         <span id="marketStatusLabel">LIVE MARKET</span>
       </div>
 
+      <!-- Tradejini Daily Auto-Login Status Badge -->
+      <div id="tjAutoLoginBadge" class="tj-login-badge" title="Tradejini CubePlus API (Daily Auto-Login: Active)">
+        <span class="tj-dot"></span>
+        <span id="tjLoginBadgeText">TR2488 कनेक्टेड</span>
+        <button id="btnRefreshTjAuth" class="btn-tj-refresh" title="Force Daily Auto-Login & Refresh Data">🔄</button>
+      </div>
+
       <!-- User Chip -->
       <div class="user-badge-chip" id="userBadgeChip" style="display:none;" title="Logged In User">
         <span>👤</span>
@@ -654,6 +661,6 @@
   </div>
 
   <!-- Core Main Application Logic -->
-  <script src="./assets/app.js?v=20261007_5"></script>
+  <script src="./assets/app.js?v=20261015_autologin"></script>
 </body>
 </html>

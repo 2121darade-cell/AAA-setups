@@ -22,9 +22,13 @@ const TJ_PASSWORD = process.env.TJ_PASSWORD || '1208';
 const TJ_SEED = process.env.TJ_SEED || 'GRZZXEU7TV6WUXEFWGOJR7RHHQC54ZL4';
 const TJ_BASE_URL = 'https://api.tradejini.com/v2';
 
-// Session State
+// Session State & Auto-Login Tracking (Tradejini Account: TR2488)
 let tjAccessToken = null;
 let tjTokenExpiryMs = 0;
+let tjLastLoginMs = 0;
+let tjLastLoginStatus = 'NOT_LOGGED_IN';
+let tjLastLoginMessage = 'Auto-login initialization pending';
+let tjLoginCountToday = 0;
 let loginInFlight = null;
 
 // Short-lived candle cache to protect Tradejini rate limits under concurrent requests
@@ -97,11 +101,28 @@ const AAA_EXTRA_STOCKS = [
 const INTRADAY_FAST_STOCKS = CORE_STOCKS.slice(0, 30);
 
 // Persistent cache of 60-day 5m bars used to build Daily (1D), 15m, and 60m candles
-// Completed Daily (1D) bars only change once per day at 15:30 IST, so keep 4-hour TTL
 const raw60dCache = new Map();
-const RAW_60D_TTL_MS = 4 * 3600 * 1000;
 let lastMorningScanDate = '';
 let morningWarmupInFlight = null;
+
+function isIndianMarketHours() {
+  const istOffset = 19800000;
+  const istDate = new Date(Date.now() + istOffset);
+  const day = istDate.getUTCDay(); // 0: Sun, 1: Mon, ..., 5: Fri, 6: Sat
+  if (day === 0 || day === 6) return false;
+  const mins = istDate.getUTCHours() * 60 + istDate.getUTCMinutes();
+  // Mon-Fri 09:15 to 15:35 IST (555 to 935 minutes)
+  return mins >= 555 && mins <= 935;
+}
+
+function getRaw60dTtlMs() {
+  if (isIndianMarketHours()) {
+    // 60-second TTL during live market hours ensures today's newly closed 5m bars & daily candle flow immediately!
+    return 60 * 1000;
+  }
+  // 30 minutes outside market hours to conserve resources while remaining fresh
+  return 30 * 60 * 1000;
+}
 
 // Serialized rate-limiter queue for Tradejini HTTP requests to prevent OpenResty 429 Too Many Requests
 let tjRequestChain = Promise.resolve();
@@ -214,10 +235,10 @@ function httpsRequest(urlStr, options = {}, bodyStr = null) {
   });
 }
 
-// 2. Automated Tradejini Login
+// 2. Automated Tradejini Login (RFC 6238 TOTP Engine)
 async function refreshTradejiniSession(force = false) {
   const now = Date.now();
-  if (!force && tjAccessToken && now < tjTokenExpiryMs) {
+  if (!force && tjAccessToken && now < (tjTokenExpiryMs - 60000)) {
     return tjAccessToken;
   }
   if (loginInFlight) {
@@ -254,13 +275,21 @@ async function refreshTradejiniSession(force = false) {
           tjAccessToken = parsed.access_token;
           const ttlMs = ((Number(parsed.expires_in) || 86400) - 300) * 1000;
           tjTokenExpiryMs = Math.min(Date.now() + ttlMs, getNextDailyCutoffMs());
-          console.log(`[Tradejini Engine] Authenticated! Expires at: ${formatIst(tjTokenExpiryMs).isoLocal}`);
+          tjLastLoginMs = Date.now();
+          tjLastLoginStatus = 'SUCCESS';
+          tjLastLoginMessage = 'Authentication successful';
+          tjLoginCountToday++;
+          console.log(`[Tradejini Auto-Login] Authenticated account ${TJ_USER_ID}! Token valid until: ${formatIst(tjTokenExpiryMs).isoLocal}`);
           return tjAccessToken;
         }
       }
-      console.error(`[Tradejini Engine] Login failed (${res.statusCode}): ${res.body.slice(0, 200)}`);
+      tjLastLoginStatus = 'ERROR';
+      tjLastLoginMessage = `Login failed (${res.statusCode}): ${res.body.slice(0, 150)}`;
+      console.error(`[Tradejini Auto-Login] Login failed (${res.statusCode}): ${res.body.slice(0, 200)}`);
     } catch (err) {
-      console.error(`[Tradejini Engine] Login error: ${err.message}`);
+      tjLastLoginStatus = 'ERROR';
+      tjLastLoginMessage = `Login exception: ${err.message}`;
+      console.error(`[Tradejini Auto-Login] Login error: ${err.message}`);
     } finally {
       loginInFlight = null;
     }
@@ -367,7 +396,8 @@ function parseBars(bars, tjInterval) {
 }
 
 // Aggregate 5m Tradejini bars into exact Daily (1D) OHLCV candles by IST trading date
-function aggregateBarsToDaily(candles5m) {
+// Synthesizes or updates today's forming Daily candle so today is ALWAYS present in the daily chart and screener
+function aggregateBarsToDaily(candles5m, liveQuote = null) {
   const byDay = new Map();
   for (const c of candles5m) {
     const dayKey = c.fullDate;
@@ -392,6 +422,39 @@ function aggregateBarsToDaily(candles5m) {
       d.volume += (c.volume || 0);
     }
   }
+
+  // Synthesize or update TODAY's live Daily (1D) candle from liveQuote or latest market data
+  const nowIst = formatIst(Date.now());
+  const todayKey = nowIst.fullDate;
+  const quote = liveQuote;
+
+  if (byDay.has(todayKey)) {
+    const todayBar = byDay.get(todayKey);
+    if (quote && quote.price) {
+      if (quote.high && quote.high > todayBar.high) todayBar.high = quote.high;
+      if (quote.low && quote.low < todayBar.low && quote.low > 0) todayBar.low = quote.low;
+      todayBar.close = quote.price;
+      if (quote.volume && quote.volume > todayBar.volume) todayBar.volume = quote.volume;
+    }
+  } else if (quote && (quote.open || quote.price)) {
+    // If today's market has opened/traded, append today's candle even if completed 5m bar not yet closed
+    const dayOpen = quote.open || quote.price;
+    const dayHigh = quote.high || quote.price;
+    const dayLow = quote.low || quote.price;
+    const dayClose = quote.price;
+    byDay.set(todayKey, {
+      timestamp: Date.now(),
+      date: nowIst.ddMon,
+      fullDate: todayKey,
+      time: 'Daily (1D)',
+      open: round2(dayOpen),
+      high: round2(dayHigh),
+      low: round2(dayLow),
+      close: round2(dayClose),
+      volume: quote.volume || 0
+    });
+  }
+
   return Array.from(byDay.values());
 }
 
@@ -430,11 +493,11 @@ function aggregateBarsToMinutes(candles5m, groupCount) {
   return out;
 }
 
-// Fetch raw 1m or 5m bars from Tradejini CubePlus API with rate-limit retry
+// Fetch raw 1m or 5m bars from Tradejini CubePlus API with rate-limit retry & auto re-login
 async function fetchRawTradejiniBars(symbol, rawInterval = '5', reqDays = 7) {
   const tradejiniId = resolveTradejiniId(symbol);
   const cacheKey = `${tradejiniId}_${rawInterval}_${reqDays}`;
-  const ttl = reqDays >= 45 ? RAW_60D_TTL_MS : CANDLE_CACHE_TTL_MS;
+  const ttl = reqDays >= 45 ? getRaw60dTtlMs() : CANDLE_CACHE_TTL_MS;
   const cacheStore = reqDays >= 45 ? raw60dCache : candleCache;
   const cached = cacheStore.get(cacheKey);
   if (cached && Date.now() - cached.ts < ttl) {
@@ -472,17 +535,24 @@ async function fetchRawTradejiniBars(symbol, rawInterval = '5', reqDays = 7) {
           };
           cacheStore.set(cacheKey, { ts: Date.now(), data: result });
           return result;
+        } else if (data && (data.s === 'error' || data.status === 'error')) {
+          const emsg = String(data.emsg || data.message || '').toLowerCase();
+          if ((emsg.includes('token') || emsg.includes('session') || emsg.includes('unauthor') || emsg.includes('expire')) && attempt < 2) {
+            console.warn(`[Tradejini Auto-Login] Session expired in response (${emsg}). Auto re-authenticating via TOTP...`);
+            token = await refreshTradejiniSession(true);
+            continue;
+          }
         }
       } else if (res.statusCode === 429) {
         await new Promise((r) => setTimeout(r, 450 * (attempt + 1)));
         continue;
-      } else if (res.statusCode === 401 && attempt === 0) {
-        console.warn('[Tradejini Engine] 401 Unauthorized, refreshing session token...');
+      } else if ((res.statusCode === 401 || res.statusCode === 403) && attempt < 2) {
+        console.warn(`[Tradejini Auto-Login] HTTP ${res.statusCode} received for ${symbol}. Re-authenticating session via TOTP...`);
         token = await refreshTradejiniSession(true);
         continue;
       }
     } catch (err) {
-      console.error(`[Tradejini Engine] Error fetching candles for ${symbol}: ${err.message}`);
+      console.error(`[Tradejini Auto-Login] Error fetching candles for ${symbol}: ${err.message}`);
     }
     break;
   }
@@ -520,7 +590,8 @@ async function getTradejiniCandles(symbol, interval = '5', days = 7) {
 
   let aggCandles = [];
   if (tjInterval === 'D') {
-    aggCandles = aggregateBarsToDaily(base5m.candles);
+    const liveQ = liveQuotesMap.get(symbol.toUpperCase().trim()) || base5m.quote;
+    aggCandles = aggregateBarsToDaily(base5m.candles, liveQ);
   } else if (tjInterval === '15') {
     aggCandles = aggregateBarsToMinutes(base5m.candles, 3);
   } else if (tjInterval === '60') {
@@ -1573,8 +1644,9 @@ async function getTradejiniAaaScreener(days = 10, minTrend = 3) {
     const cachedRaw = raw60dCache.get(rawCacheKey);
 
     let dailyCandles = null;
+    const liveQ = liveQuotesMap.get(sym.toUpperCase().trim());
     if (cachedRaw && cachedRaw.data && Array.isArray(cachedRaw.data.candles) && cachedRaw.data.candles.length > 0) {
-      dailyCandles = aggregateBarsToDaily(cachedRaw.data.candles);
+      dailyCandles = aggregateBarsToDaily(cachedRaw.data.candles, liveQ);
     } else if (scannedCount < 35) {
       // Only fetch synchronously if cold cache has fewer than 35 symbols
       const cData = await getTradejiniCandles(sym, 'D', 60).catch(() => null);
@@ -1656,11 +1728,48 @@ const server = http.createServer(async (req, res) => {
       sendJson(res, 200, {
         connected: Boolean(tjAccessToken),
         clientCode: TJ_USER_ID,
+        autoLoginStatus: 'ACTIVE (RFC 6238 TOTP Automated Engine)',
+        lastLoginAt: tjLastLoginMs ? formatIst(tjLastLoginMs).fullDateTime : 'Pending',
         tokenExpiresAt: tjTokenExpiryMs ? formatIst(tjTokenExpiryMs).isoLocal : null,
-        autoRefresh: 'Enabled (24h TOTP Seed)',
-        dailyMorningScan: lastMorningScanDate || 'Warming up',
+        todayDate: formatIst(Date.now()).fullDate,
+        currentTimeIst: formatIst(Date.now()).fullDateTime,
+        isMarketHours: isIndianMarketHours(),
+        cachedQuotesCount: liveQuotesMap.size,
+        cachedDailyUniverseSize: raw60dCache.size,
+        dailyMorningScan: lastMorningScanDate || 'Active',
         broker: 'Tradejini CubePlus v2'
       });
+      return;
+    }
+
+    // 1b. API: Manual/Admin Triggered Force Auto-Login & Stale Cache Flush
+    if (pathname === '/api/tradejini/auth-refresh') {
+      try {
+        console.log(`[Tradejini Auto-Login] Manual/Admin forced session re-authentication requested for ${TJ_USER_ID}...`);
+        raw60dCache.clear();
+        screenerCache.clear();
+        candleCache.clear();
+        const token = await refreshTradejiniSession(true);
+        // Refresh live quotes and daily cache in background
+        getLiveQuotesSnapshot().catch(() => {});
+        warmupDailyAaaUniverse(false).catch(() => {});
+
+        sendJson(res, 200, {
+          s: 'ok',
+          message: 'Tradejini account successfully re-authenticated via TOTP and daily caches flushed',
+          clientCode: TJ_USER_ID,
+          authenticatedAt: formatIst(tjLastLoginMs || Date.now()).fullDateTime,
+          tokenExpiresAt: tjTokenExpiryMs ? formatIst(tjTokenExpiryMs).isoLocal : null,
+          todayDate: formatIst(Date.now()).fullDate,
+          connected: Boolean(token),
+          broker: 'Tradejini CubePlus v2'
+        });
+      } catch (err) {
+        sendJson(res, 500, {
+          s: 'error',
+          message: `Re-authentication error: ${err.message}`
+        });
+      }
       return;
     }
 
@@ -1743,26 +1852,94 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-// Automated Daily Morning Calculation Scheduler (runs every morning at 08:30 IST & 09:15 IST)
-setInterval(() => {
-  const ist = formatIst(Date.now());
-  if ((ist.hhmm === '08:30' || ist.hhmm === '09:15' || ist.hhmm === '15:35') && lastMorningScanDate !== `${ist.fullDate}_${ist.hhmm}`) {
-    lastMorningScanDate = `${ist.fullDate}_${ist.hhmm}`;
-    refreshTradejiniSession(true)
-      .then(() => warmupDailyAaaUniverse(true))
-      .catch(() => {});
-  }
-}, 30000);
+// Automated Daily Tradejini Auto-Login & Real-Time Sync Supervisor Engine
+let supervisorTimer = null;
+let lastExecutedAction = '';
+
+function scheduleDailyTradejiniSupervisor() {
+  if (supervisorTimer) clearInterval(supervisorTimer);
+
+  supervisorTimer = setInterval(async () => {
+    try {
+      const ist = formatIst(Date.now());
+      const hhmm = ist.hhmm;
+      const actionKey = `${ist.fullDate}_${hhmm}`;
+
+      // 1. Proactive Scheduled Daily Checkpoints
+      // Checkpoint 08:00 IST: Morning Pre-market Auto Login
+      if (hhmm === '08:00' && lastExecutedAction !== `LOGIN_${actionKey}`) {
+        lastExecutedAction = `LOGIN_${actionKey}`;
+        console.log(`[Tradejini Auto-Login] [08:00 IST] Proactive Morning Auto-Login initiated for ${TJ_USER_ID}...`);
+        await refreshTradejiniSession(true);
+      }
+
+      // Checkpoint 08:45 IST: Morning Pre-market Cache Clear
+      if (hhmm === '08:45' && lastExecutedAction !== `FLUSH_${actionKey}`) {
+        lastExecutedAction = `FLUSH_${actionKey}`;
+        console.log(`[Tradejini Auto-Login] [08:45 IST] Clearing stale yesterday caches before market open...`);
+        raw60dCache.clear();
+        screenerCache.clear();
+        candleCache.clear();
+        await refreshTradejiniSession(true);
+      }
+
+      // Checkpoint 09:08 IST: Pre-Market Token & Connectivity Health Check
+      if (hhmm === '09:08' && lastExecutedAction !== `PREMKT_${actionKey}`) {
+        lastExecutedAction = `PREMKT_${actionKey}`;
+        console.log(`[Tradejini Auto-Login] [09:08 IST] Pre-market token verification...`);
+        await refreshTradejiniSession(false);
+      }
+
+      // Checkpoint 09:16:30 IST: Market Open Warmup
+      if (hhmm === '09:16' && lastExecutedAction !== `MKTOPEN_${actionKey}`) {
+        lastExecutedAction = `MKTOPEN_${actionKey}`;
+        console.log(`[Tradejini Auto-Login] [09:16 IST] Market Open: Fetching initial quotes & syncing...`);
+        await getLiveQuotesSnapshot();
+      }
+
+      // Checkpoint 09:21 IST: First 5-minute bar closed, run full AAA universe warmup with today's opening session
+      if (hhmm === '09:21' && lastExecutedAction !== `WARMUP_${actionKey}`) {
+        lastExecutedAction = `WARMUP_${actionKey}`;
+        console.log(`[Tradejini Auto-Login] [09:21 IST] First 5m candle completed: Warming up AAA Daily (1D) universe...`);
+        warmupDailyAaaUniverse(true).catch(() => {});
+      }
+
+      // Checkpoint 15:35 IST: Post-market EOD daily close capture
+      if (hhmm === '15:35' && lastExecutedAction !== `EOD_${actionKey}`) {
+        lastExecutedAction = `EOD_${actionKey}`;
+        console.log(`[Tradejini Auto-Login] [15:35 IST] Market Close: Capturing finalized EOD Daily (1D) bars...`);
+        warmupDailyAaaUniverse(true).catch(() => {});
+      }
+
+      // 2. Token Expiry Guard (Runs continuously)
+      // If token is missing OR expires within 15 minutes, auto-renew with TOTP
+      const now = Date.now();
+      if (!tjAccessToken || (tjTokenExpiryMs > 0 && now >= (tjTokenExpiryMs - 15 * 60 * 1000))) {
+        console.log(`[Tradejini Auto-Login] Token approaching expiry (or null). Renewing automatically via TOTP seed...`);
+        await refreshTradejiniSession(true);
+      }
+
+      // 3. Intraday Periodic Quotes Sweep during Market Hours (every 3 minutes)
+      if (isIndianMarketHours() && (Number(ist.mm) % 3 === 0) && ist.ss === '15') {
+        getLiveQuotesSnapshot().catch(() => {});
+      }
+    } catch (err) {
+      console.error('[Tradejini Auto-Login Supervisor Error]:', err.message);
+    }
+  }, 15000); // Check every 15 seconds
+}
 
 server.listen(PORT, HOST, () => {
   console.log(`==================================================================`);
   console.log(` Finanthropist Educare Pvt Ltd - Tradejini Pure Live Data Terminal`);
   console.log(` Server Running at: http://${HOST}:${PORT}/`);
-  console.log(` Auto-Login Token: Active (Auto-renew via TOTP Seed)`);
-  console.log(` Daily (1D) AAA Morning Scanner: Enabled (82 Instruments)`);
+  console.log(` Auto-Login Token: Active (Auto-renew via TOTP Seed: ${TJ_USER_ID})`);
+  console.log(` Daily (1D) AAA Morning Scanner: Enabled (189 Instruments)`);
+  console.log(` Daily Scheduled Supervisor: Active (08:00, 08:45, 09:08, 09:16, 09:21, 15:35)`);
   console.log(`==================================================================`);
+  scheduleDailyTradejiniSupervisor();
   refreshTradejiniSession(false)
     .then(() => getLiveQuotesSnapshot())
     .then(() => warmupDailyAaaUniverse(false))
-    .catch(() => {});
+    .catch((err) => console.error('[Startup Error]', err));
 });

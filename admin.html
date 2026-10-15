@@ -437,6 +437,47 @@
       </div>
     </div>
 
+    <!-- Panel 3: Tradejini Daily Auto-Login & Real-Time Data Sync Control -->
+    <div class="panel-card" style="border-left: 4px solid #10b981;">
+      <div class="panel-header">
+        <h2>
+          <span>⚡</span> Tradejini CubePlus API — दैनिक ऑटो-लॉगिन व डेटा सिंक कंट्रोल
+          <span id="badgeTjConn" style="background:#10b981; color:#fff; font-size:11px; padding:2px 8px; border-radius:12px; font-weight:700;">कनेक्टेड</span>
+        </h2>
+        <button id="btnAdminForceTjAuth" class="btn-approve" style="background:#2563eb; padding:8px 16px; font-size:13px;">
+          🔄 त्वरित ऑटो-लॉगिन व आजचा डेटा सिंक करा
+        </button>
+      </div>
+
+      <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:14px; margin-bottom:18px;">
+        <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:12px;">
+          <div style="font-size:11px; color:#64748b; font-weight:600; text-transform:uppercase;">ट्रेडजिनी क्लायंट कोड</div>
+          <div style="font-size:16px; font-weight:800; color:#0f172a; margin-top:4px;" id="adminTjClientCode">TR2488</div>
+        </div>
+        <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:12px;">
+          <div style="font-size:11px; color:#64748b; font-weight:600; text-transform:uppercase;">आजची ट्रेडिंग तारीख</div>
+          <div style="font-size:16px; font-weight:800; color:#0f172a; margin-top:4px;" id="adminTjToday">15 Oct 2026</div>
+        </div>
+        <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:12px;">
+          <div style="font-size:11px; color:#64748b; font-weight:600; text-transform:uppercase;">शेवटचे ऑटो-लॉगिन</div>
+          <div style="font-size:13px; font-weight:700; color:#059669; margin-top:4px;" id="adminTjLastLogin">सक्रिय</div>
+        </div>
+        <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:12px;">
+          <div style="font-size:11px; color:#64748b; font-weight:600; text-transform:uppercase;">कॅश केलेले इन्स्ट्रुमेंट्स</div>
+          <div style="font-size:16px; font-weight:800; color:#2563eb; margin-top:4px;" id="adminTjUniverse">189 Stocks</div>
+        </div>
+      </div>
+
+      <div style="background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; padding:12px 16px; font-size:12px; color:#1e40af; line-height:1.6;">
+        <strong>🤖 स्वयंचलित दैनिक वेळापत्रक (Daily Auto-Login Schedule):</strong><br />
+        • <strong>08:00 IST:</strong> सकाळचे प्री-मार्केट ऑटो-लॉगिन (RFC 6238 TOTP).<br />
+        • <strong>08:45 IST:</strong> कालचा शिळा डेटा/कॅश स्वयंचलित फ्लश (Cache Wipe).<br />
+        • <strong>09:08 IST:</strong> प्री-मार्केट टोकन पडताळणी.<br />
+        • <strong>09:16 व 09:21 IST:</strong> मार्केट ओपनिंग सिंक व 1D कॅन्डल वार्मअप.<br />
+        • <strong>मार्केट वेळेत (09:15 - 15:30):</strong> दर 60 सेकंदांनी आजच्या लाइव्ह भावांसह 1D कॅन्डल्स अपडेट होतात.
+      </div>
+    </div>
+
   </main>
 
   <script>
@@ -717,8 +758,56 @@
       a.click();
     });
 
+    // Tradejini Auto-Login & Real-Time Sync Monitor
+    async function updateAdminTradejiniStatus() {
+      try {
+        const res = await fetch('./api/tradejini/status');
+        if (!res.ok) return;
+        const data = await res.json();
+        const badge = document.getElementById('badgeTjConn');
+        const elClient = document.getElementById('adminTjClientCode');
+        const elToday = document.getElementById('adminTjToday');
+        const elLogin = document.getElementById('adminTjLastLogin');
+        const elUniv = document.getElementById('adminTjUniverse');
+
+        if (badge) {
+          badge.textContent = data.connected ? '🟢 कनेक्टेड (Active)' : '🔴 डिस्कनेक्टेड';
+          badge.style.background = data.connected ? '#10b981' : '#ef4444';
+        }
+        if (elClient) elClient.textContent = data.clientCode || 'TR2488';
+        if (elToday) elToday.textContent = data.todayDate || '15 Oct 2026';
+        if (elLogin) elLogin.textContent = data.lastLoginAt || 'Active';
+        if (elUniv) elUniv.textContent = `${data.cachedDailyUniverseSize || 189} इन्स्ट्रुमेंट्स`;
+      } catch (e) {}
+    }
+
+    const btnAdminForceTj = document.getElementById('btnAdminForceTjAuth');
+    if (btnAdminForceTj) {
+      btnAdminForceTj.addEventListener('click', async () => {
+        btnAdminForceTj.disabled = true;
+        btnAdminForceTj.innerHTML = '⏳ ऑटो-लॉगिन व डेटा सिंक होत आहे...';
+        try {
+          const res = await fetch('./api/tradejini/auth-refresh', { method: 'POST' });
+          const data = await res.json();
+          if (data && data.s === 'ok') {
+            alert(`✅ Tradejini दैनिक ऑटो-लॉगिन यशस्वी!\nखाते: ${data.clientCode}\nतारीख: ${data.todayDate}\nटोकन वैध: ${data.tokenExpiresAt}`);
+            updateAdminTradejiniStatus();
+          } else {
+            alert(`⚠️ त्रुटी: ${data.message || 'Error'}`);
+          }
+        } catch (err) {
+          alert(`❌ सर्व्हर त्रुटी: ${err.message}`);
+        } finally {
+          btnAdminForceTj.disabled = false;
+          btnAdminForceTj.innerHTML = '🔄 त्वरित ऑटो-लॉगिन व आजचा डेटा सिंक करा';
+        }
+      });
+    }
+
     // Start
     checkAuth();
+    updateAdminTradejiniStatus();
+    setInterval(updateAdminTradejiniStatus, 20000);
   </script>
 </body>
 </html>

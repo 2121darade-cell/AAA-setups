@@ -927,6 +927,59 @@ function startLivePoller() {
   }, 10000);
 }
 
+async function updateTradejiniBadge() {
+  const badgeText = document.getElementById('tjLoginBadgeText');
+  const badgeDot = document.querySelector('#tjAutoLoginBadge .tj-dot');
+  if (!badgeText) return;
+  try {
+    const res = await fetch('./api/tradejini/status');
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data.connected) {
+      badgeText.textContent = `${data.clientCode || 'TR2488'} • ${data.todayDate || 'Live'}`;
+      if (badgeDot) badgeDot.style.background = '#22c55e';
+    } else {
+      badgeText.textContent = 'Tradejini री-लॉगिन आवश्यक';
+      if (badgeDot) badgeDot.style.background = '#ef4444';
+    }
+  } catch (e) {
+    // Keep current
+  }
+}
+
+function initTradejiniAutoLoginBadge() {
+  updateTradejiniBadge();
+  setInterval(updateTradejiniBadge, 30000);
+
+  const btnRefresh = document.getElementById('btnRefreshTjAuth');
+  if (btnRefresh) {
+    btnRefresh.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      btnRefresh.style.animation = 'spin 0.8s linear infinite';
+      try {
+        const res = await fetch('./api/tradejini/auth-refresh', { method: 'POST' });
+        const data = await res.json();
+        if (data && data.s === 'ok') {
+          showToastNotification(`Tradejini ऑटो-लॉगिन यशस्वी (${data.clientCode}) • आजचा डेटा (${data.todayDate}) रिफ्रेश झाला!`, 'success');
+          updateTradejiniBadge();
+          if (AppState.currentAsset) {
+            fetchLiveCandlesFromTradejini(AppState.currentAsset, false);
+          }
+          if (window.AAAScreenerModule && typeof window.AAAScreenerModule.runScreener === 'function') {
+            window.AAAScreenerModule.runScreener();
+          }
+        } else {
+          showToastNotification(`Tradejini लॉगिन त्रुटी: ${data.message || 'Error'}`, 'error');
+        }
+      } catch (err) {
+        showToastNotification(`सर्व्हर कनेक्ट त्रुटी: ${err.message}`, 'error');
+      } finally {
+        setTimeout(() => { btnRefresh.style.animation = ''; }, 600);
+      }
+    });
+  }
+}
+
 async function fetchLiveCandlesFromTradejini(asset, resetZoom = false) {
   if (!asset || !asset.symbol) return;
   const sym = asset.symbol;
@@ -2318,6 +2371,7 @@ function initApplication() {
   // 11. Start Countdown & Live Poller
   startCandleCountdown();
   startLivePoller();
+  initTradejiniAutoLoginBadge();
 
   // 12. Initialize Watchlist Sidebar & First Stock
   initWatchlistSidebar();
