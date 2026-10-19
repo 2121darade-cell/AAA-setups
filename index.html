@@ -24,18 +24,18 @@
   </script>
 
   <!-- Core Symbol Lists (Prices overwritten on load by Live Tradejini API) -->
-  <script src="./assets/mcx_data.js?v=20261019_v2"></script>
-  <script src="./assets/nifty500_data.js?v=20261019_v2"></script>
+  <script src="./assets/mcx_data.js?v=20261019_v3"></script>
+  <script src="./assets/nifty500_data.js?v=20261019_v3"></script>
   <script>
     if (typeof NIFTY_500_STOCKS !== "undefined") window.NIFTY_500_STOCKS = NIFTY_500_STOCKS;
     if (typeof MCX_COMMODITIES !== "undefined") window.MCX_COMMODITIES = MCX_COMMODITIES;
   </script>
 
   <!-- Sub-Modules & Localization -->
-  <script src="./assets/cubeplus_feed.js?v=20261019_v2"></script>
-  <script src="./assets/i18n.js?v=20261019_v2"></script>
-  <script src="./assets/trade_setup.js?v=20261019_v2"></script>
-  <script src="./assets/aaa_screener.js?v=20261019_v2"></script>
+  <script src="./assets/cubeplus_feed.js?v=20261019_v3"></script>
+  <script src="./assets/i18n.js?v=20261019_v3"></script>
+  <script src="./assets/trade_setup.js?v=20261019_v3"></script>
+  <script src="./assets/aaa_screener.js?v=20261019_v3"></script>
 </head>
 <body>
 
@@ -51,7 +51,7 @@
         <div class="brand-title">
           Finanthropist Educare <span class="brand-badge">2.0</span>
         </div>
-        <div class="brand-subtitle">Pvt Ltd &bull; Real-Time Trading Suite</div>
+        <div class="brand-subtitle" data-i18n="brand_sub">प्रायव्हेट लिमिटेड • रिअल-टाईम ट्रेडिंग सूट</div>
       </div>
     </div>
 
@@ -98,7 +98,7 @@
 
     <!-- Header Search Bar -->
     <div class="header-search-wrap">
-      <input type="text" id="header-stock-search" class="header-stock-search" placeholder="🔍 स्टॉक्स / MCX सर्च करा..." />
+      <input type="text" id="header-stock-search" class="header-stock-search" placeholder="🔍 स्टॉक्स / MCX सर्च करा..." data-i18n-placeholder="search_placeholder" />
     </div>
 
     <!-- Header Actions -->
@@ -106,13 +106,13 @@
       <!-- Market Live Status -->
       <div id="market-status" class="market-status">
         <span class="pulse-dot"></span>
-        <span id="marketStatusLabel">LIVE MARKET</span>
+        <span id="marketStatusLabel">LIVE OPEN</span>
       </div>
 
       <!-- Tradejini Daily Auto-Login Status Badge -->
       <div id="tjAutoLoginBadge" class="tj-login-badge" title="Tradejini CubePlus API (Daily Auto-Login: Active)">
         <span class="tj-dot"></span>
-        <span id="tjLoginBadgeText">TR2488 कनेक्टेड</span>
+        <span id="tjLoginBadgeText" data-i18n="tj_connected">TR2488 कनेक्टेड</span>
         <button id="btnRefreshTjAuth" class="btn-tj-refresh" title="Force Daily Auto-Login & Refresh Data">🔄</button>
       </div>
 
@@ -129,14 +129,14 @@
       </div>
 
       <!-- Fullscreen Button -->
-      <button class="action-btn hide-mobile" id="btn-fullscreen" title="Toggle Fullscreen">
+      <button class="action-btn hide-mobile" id="btn-fullscreen" title="Toggle Fullscreen" data-i18n-title="fullscreen_title">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
       </button>
 
       <!-- Watchlist Toggle Button (Chart View only) -->
       <button class="action-btn" id="toggle-sidebar-btn" title="Toggle Watchlist">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
-        <span class="hide-mobile">Watchlist</span>
+        <span class="hide-mobile" data-i18n="btn_watchlist">Watchlist</span>
       </button>
     </div>
   </header>
@@ -165,23 +165,23 @@
                 <!-- Live Candle Bar Countdown Pill -->
                 <div class="candle-countdown-chip" id="candle-countdown-chip" title="Remaining time until current candle bar closes">
                   <span class="countdown-pulse"></span>
-                  <span class="countdown-label">BAR CLOSE:</span>
+                  <span class="countdown-label" data-i18n="bar_close_prefix">कॅन्डल बंद: </span>
                   <strong id="candle-countdown-val">04:59</strong>
                 </div>
 
                 <!-- Quick Add to Watchlist Button -->
-                <button class="quick-add-wl-btn" id="btn-quick-add-stock" title="Add active stock to custom watchlist">
-                  ⭐ + Watchlist
+                <button class="quick-add-wl-btn" id="btn-quick-add-stock" title="Add active stock to custom watchlist" data-i18n="btn_add_watchlist">
+                  + वॉचलिस्ट
                 </button>
               </div>
 
               <!-- Timeframe Selector -->
               <div class="timeframe-group">
-                <button class="tf-btn" data-tf="1">1m</button>
-                <button class="tf-btn active" data-tf="5">5m</button>
-                <button class="tf-btn" data-tf="15">15m</button>
-                <button class="tf-btn" data-tf="60">1h</button>
-                <button class="tf-btn" data-tf="D">1D</button>
+                <button class="tf-btn" data-tf="1" data-i18n="tf_1m">1m</button>
+                <button class="tf-btn active" data-tf="5" data-i18n="tf_5m">5m</button>
+                <button class="tf-btn" data-tf="15" data-i18n="tf_15m">15m</button>
+                <button class="tf-btn" data-tf="60" data-i18n="tf_1h">1h</button>
+                <button class="tf-btn" data-tf="D" data-i18n="tf_1d">1D</button>
               </div>
 
               <!-- Chart Style Selector -->
@@ -195,16 +195,16 @@
               <div class="indicators-group" style="display:flex; gap:4px;">
                 <button class="indicator-toggle-btn active" data-ind="ma" title="Toggle Moving Average 20">MA(20)</button>
                 <button class="indicator-toggle-btn active" data-ind="rsi" title="Toggle RSI Indicator">RSI(7)</button>
-                <button class="indicator-toggle-btn active" data-ind="vol" title="Toggle Volume Bars">Volume</button>
+                <button class="indicator-toggle-btn active" data-ind="vol" title="Toggle Volume Bars" data-i18n="ind_volume">Volume</button>
               </div>
 
               <!-- Chart Zoom & Pan Controls -->
-              <div class="chart-zoom-group" title="चार्ट हलवा व कॅन्डल्स लहान/मोठ्या करा (Zoom & Pan)" style="margin-left:auto;">
-                <button class="chart-ctrl-btn" id="btnChartZoomIn" title="झूम इन / कॅन्डल मोठी करा (Zoom In)">🔍+</button>
-                <button class="chart-ctrl-btn" id="btnChartZoomOut" title="झूम आऊट / कॅन्डल लहान करा (Zoom Out)">🔍−</button>
-                <button class="chart-ctrl-btn" id="btnChartPanLeft" title="मागील कॅन्डल्स पहा (Pan Left)">◀</button>
-                <button class="chart-ctrl-btn" id="btnChartPanRight" title="पुढील कॅन्डल्स पहा (Pan Right)">▶</button>
-                <button class="chart-ctrl-btn" id="btnChartReset" title="मूळ स्थितीत आणा (Reset)">🔄</button>
+              <div class="chart-zoom-group" style="margin-left:auto;">
+                <button class="chart-ctrl-btn" id="btnChartZoomIn" title="झूम इन / कॅन्डल मोठी करा (Zoom In)" data-i18n-title="zoom_in_title">🔍+</button>
+                <button class="chart-ctrl-btn" id="btnChartZoomOut" title="झूम आऊट / कॅन्डल लहान करा (Zoom Out)" data-i18n-title="zoom_out_title">🔍−</button>
+                <button class="chart-ctrl-btn" id="btnChartPanLeft" title="मागील कॅन्डल्स पहा (Pan Left)" data-i18n-title="pan_left_title">◀</button>
+                <button class="chart-ctrl-btn" id="btnChartPanRight" title="पुढील कॅन्डल्स पहा (Pan Right)" data-i18n-title="pan_right_title">▶</button>
+                <button class="chart-ctrl-btn" id="btnChartReset" title="मूळ स्थितीत आणा (Reset)" data-i18n-title="reset_view_title">🔄</button>
               </div>
             </div>
 
@@ -245,17 +245,17 @@
         <aside class="watchlist-sidebar" id="watchlist-sidebar">
           <div class="sidebar-header">
             <div class="sidebar-title-row">
-              <span class="sidebar-title">मार्केट वॉचलिस्ट (Watchlist)</span>
-              <button class="btn-new-wl" id="btn-create-new-wl" title="नवीन वॉचलिस्ट तयार करा">
-                ➕ New List
+              <span class="sidebar-title" data-i18n="wl_title">मार्केट वॉचलिस्ट (Watchlist)</span>
+              <button class="btn-new-wl" id="btn-create-new-wl" title="नवीन वॉचलिस्ट तयार करा" data-i18n="wl_btn_new">
+                ➕ नवीन लिस्ट
               </button>
             </div>
             
             <div class="wl-select-wrapper">
               <select id="watchlist-select" class="wl-dropdown">
-                <option value="indices">🏛️ Major Indices (Nifty, Bank, Sensex, Midcap, FinNifty)</option>
-                <option value="default">📊 All 500 Stocks (Default)</option>
-                <option value="mcx">🪙 MCX Commodities</option>
+                <option value="indices" data-i18n="wl_opt_indices">🏛️ प्रमुख इंडायसेस (Nifty, Bank, Sensex, Midcap, FinNifty)</option>
+                <option value="default" data-i18n="wl_opt_all">📊 सर्व ५०० स्टॉक्स (Default)</option>
+                <option value="mcx" data-i18n="wl_opt_mcx">🪙 MCX कमोडिटी (Gold, Silver, Crude Oil, Natural Gas)</option>
                 <!-- Custom Watchlists will be added here dynamically -->
               </select>
             </div>
@@ -263,12 +263,12 @@
             <!-- Custom Watchlist Helper / Delete Banner -->
             <div id="wl-custom-tools" style="display:none; padding:6px 8px; background:#f8fafc; border-radius:6px; margin-bottom:6px; border:1px solid var(--border-subtle); justify-content:space-between; align-items:center;">
               <span style="font-size:11px; font-weight:800; color:#2563eb;" id="wl-custom-name-label">⭐ My Watchlist</span>
-              <button class="action-btn" id="btnDeleteCurrentWl" style="font-size:10px; color:#ef4444; border:none; background:none; cursor:pointer; font-weight:700;" title="ही वॉचलिस्ट डिलीट करा">
-                🗑️ डिलीट यादी
+              <button class="action-btn" id="btnDeleteCurrentWl" style="font-size:10px; color:#ef4444; border:none; background:none; cursor:pointer; font-weight:700;" title="ही वॉचलिस्ट डिलीट करा" data-i18n="wl_delete_btn">
+                🗑️ ही वॉचलिस्ट डिलीट करा
               </button>
             </div>
 
-            <input type="text" id="sidebar-stock-search" class="sidebar-search-input" placeholder="🔍 स्टॉक / इंडेक्स शोधा (+ वर क्लिक करून जोडा)..." />
+            <input type="text" id="sidebar-stock-search" class="sidebar-search-input" placeholder="🔍 स्टॉक / इंडेक्स शोधा (+ वर क्लिक करून जोडा)..." data-i18n-placeholder="wl_search_placeholder" />
           </div>
 
           <!-- Watchlist Stock Rows -->
@@ -292,8 +292,8 @@
       <div class="ts-rules-card">
         <div class="ts-rules-icon">🎯</div>
         <div>
-          <div class="ts-rules-title">५-मिनिट Heikin Ashi + RSI(7) (80/20) रिव्हर्सल & CC (Confirmation Candle) सेटअप</div>
-          <div class="ts-rules-sub">
+          <div class="ts-rules-title" data-i18n="ts_rules_title">५-मिनिट Heikin Ashi + RSI(7) (80/20) रिव्हर्सल & CC (Confirmation Candle) सेटअप</div>
+          <div class="ts-rules-sub" data-i18n="ts_rules_sub">
             नियम: <strong>३+ सलग लाल HA कॅन्डल्स</strong> + <strong>RSI(7) &lt; 20 (Oversold)</strong> + पहिली <strong>Flat Bottom (HA Open = HA Low)</strong> हिरवी HA कॅन्डल = 🟢 BUY कॉल सेटअप (Entry: <strong>HA Close</strong> | SL: <strong>HA Low</strong>). <br>
             <strong>३+ सलग हिरव्या HA कॅन्डल्स</strong> + <strong>RSI(7) &gt; 80 (Overbought)</strong> + पहिली <strong>Flat Top (HA Open = HA High)</strong> लाल HA कॅन्डल = 🔴 SELL पुट सेटअप (Entry: <strong>HA Close</strong> | SL: <strong>HA High</strong>).
           </div>
@@ -303,32 +303,33 @@
       <!-- Controls Toolbar -->
       <div class="ts-toolbar">
         <div class="ts-filter-tabs" id="tsFilterTabs">
-          <button class="ts-tab-btn active" data-filter="ALL">सर्व (<span id="tsCountAll">0</span>)</button>
-          <button class="ts-tab-btn" data-filter="BUY">🟢 BUY Call (<span id="tsCountBuy">0</span>)</button>
-          <button class="ts-tab-btn" data-filter="SELL">🔴 SELL Put (<span id="tsCountSell">0</span>)</button>
-          <button class="ts-tab-btn" data-filter="INDEX">इंडायसेस (<span id="tsCountIndex">0</span>)</button>
-          <button class="ts-tab-btn" data-filter="STOCKS">स्टॉक्स व MCX (<span id="tsCountStock">0</span>)</button>
+          <button class="ts-tab-btn active" data-filter="ALL"><span data-i18n="ts_tab_all">सर्व</span> (<span id="tsCountAll">0</span>)</button>
+          <button class="ts-tab-btn" data-filter="BUY"><span data-i18n="ts_tab_buy">🟢 BUY Call</span> (<span id="tsCountBuy">0</span>)</button>
+          <button class="ts-tab-btn" data-filter="SELL"><span data-i18n="ts_tab_sell">🔴 SELL Put</span> (<span id="tsCountSell">0</span>)</button>
+          <button class="ts-tab-btn" data-filter="INDEX"><span data-i18n="ts_tab_index">इंडायसेस</span> (<span id="tsCountIndex">0</span>)</button>
+          <button class="ts-tab-btn" data-filter="STOCKS"><span data-i18n="ts_tab_stocks">स्टॉक्स व MCX</span> (<span id="tsCountStock">0</span>)</button>
         </div>
 
         <div style="flex:1; max-width:260px;">
-          <input type="text" id="tsInputSearch" class="form-input" placeholder="🔍 शोधा (उदा. NIFTY, MAZDOCK, GOLD)..." />
+          <input type="text" id="tsInputSearch" class="form-input" placeholder="🔍 शोधा (उदा. NIFTY, RELIANCE, GOLD)..." data-i18n-placeholder="ts_search_placeholder" />
         </div>
 
         <div class="ts-actions-group">
           <button id="tsBtnAudioToggle" class="ts-btn-secondary active">
             <span>🔊</span>
-            <span class="ts-audio-text">ध्वनी चालू</span>
+            <span class="ts-audio-text" data-i18n="ts_audio_on">🔊 ध्वनी चालू</span>
           </button>
           <button id="tsBtnNotifToggle" class="ts-btn-secondary">
             <span>🔔</span>
-            <span class="ts-notif-text">नोटिफिकेशन</span>
+            <span class="ts-notif-text" data-i18n="ts_notif_btn">🔔 ॲलर्ट परवानगी</span>
           </button>
           <button id="tsBtnScanNow" class="ts-btn-primary">
             <span>⚡</span>
-            <span>आत्ता स्कॅन करा</span>
+            <span data-i18n="ts_scan_btn">⚡ आत्ता स्कॅन करा</span>
           </button>
           <button id="tsBtnTestAlert" class="ts-btn-secondary" style="background:#eff6ff; color:#1d4ed8; border-color:#bfdbfe;">
-            <span>🔔 डेमो ॲलर्ट</span>
+            <span>🔔</span>
+            <span data-i18n="ts_demo_alert_btn">🔔 डेमो ॲलर्ट</span>
           </button>
         </div>
       </div>
@@ -348,24 +349,24 @@
         <div class="aaa-rule-box aaa-buy-rule">
           <div class="aaa-rule-header">
             <span class="aaa-pill aaa-pill-buy">BUY SETUP</span>
-            <h3 style="color:#065f46;">खरेदी नियम (BUY Rules - Daily 1D)</h3>
+            <h3 style="color:#065f46;" data-i18n="aaa_buy_title">खरेदी नियम (BUY Rules - Daily 1D)</h3>
           </div>
           <ul>
-            <li><strong>ट्रेंड:</strong> Daily (1D) चार्टवर <strong>Downtrend</strong> (सलग Red कॅन्डल्स / Swing Low).</li>
-            <li><strong>पॅटर्न्स:</strong> Bullish Harami, Bullish Engulfing, Bullish Piercing, Morning Star.</li>
-            <li><strong>Entry (Buy):</strong> रिव्हर्सल Green कॅन्डलची <strong>Close Price</strong> | <strong>SL:</strong> पॅटर्नचा <strong>Lowest Low</strong> (Mother/Candle Low).</li>
+            <li data-i18n="aaa_buy_r1"><strong>ट्रेंड:</strong> Daily (1D) चार्टवर <strong>Downtrend</strong> (सलग Red कॅन्डल्स / Swing Low).</li>
+            <li data-i18n="aaa_buy_r2"><strong>पॅटर्न्स:</strong> Bullish Harami, Bullish Engulfing, Bullish Piercing, Morning Star.</li>
+            <li data-i18n="aaa_buy_r3"><strong>Entry (Buy):</strong> रिव्हर्सल Green कॅन्डलची <strong>Close Price</strong> | <strong>SL:</strong> पॅटर्नचा <strong>Lowest Low</strong> (Mother/Candle Low).</li>
           </ul>
         </div>
 
         <div class="aaa-rule-box aaa-sell-rule">
           <div class="aaa-rule-header">
             <span class="aaa-pill aaa-pill-sell">SELL SETUP</span>
-            <h3 style="color:#991b1b;">विक्री नियम (SELL Rules - Daily 1D)</h3>
+            <h3 style="color:#991b1b;" data-i18n="aaa_sell_title">विक्री नियम (SELL Rules - Daily 1D)</h3>
           </div>
           <ul>
-            <li><strong>ट्रेंड:</strong> Daily (1D) चार्टवर <strong>Uptrend</strong> (सलग Green कॅन्डल्स / Swing High).</li>
-            <li><strong>पॅटर्न्स:</strong> Bearish Harami, Bearish Engulfing, Bearish Piercing, Evening Star.</li>
-            <li><strong>Entry (Sell):</strong> रिव्हर्सल Red कॅन्डलची <strong>Close Price</strong> | <strong>SL:</strong> पॅटर्नचा <strong>Highest High</strong> (Mother/Candle High).</li>
+            <li data-i18n="aaa_sell_r1"><strong>ट्रेंड:</strong> Daily (1D) चार्टवर <strong>Uptrend</strong> (सलग Green कॅन्डल्स / Swing High).</li>
+            <li data-i18n="aaa_sell_r2"><strong>पॅटर्न्स:</strong> Bearish Harami, Bearish Engulfing, Bearish Piercing, Evening Star.</li>
+            <li data-i18n="aaa_sell_r3"><strong>Entry (Sell):</strong> रिव्हर्सल Red कॅन्डलची <strong>Close Price</strong> | <strong>SL:</strong> पॅटर्नचा <strong>Highest High</strong> (Mother/Candle High).</li>
           </ul>
         </div>
       </div>
@@ -373,19 +374,19 @@
       <!-- KPI Stat Cards -->
       <div class="aaa-stats-row">
         <div class="aaa-stat-card">
-          <div class="aaa-stat-title">एकूण स्टॉक्स (Universe)</div>
+          <div class="aaa-stat-title" data-i18n="aaa_stat_universe">एकूण स्टॉक्स (Universe)</div>
           <div class="aaa-stat-val" id="aaaStatTotalStocks">200</div>
         </div>
         <div class="aaa-stat-card">
-          <div class="aaa-stat-title" style="color:#065f46;">खरेदी सिग्नल्स (BUY)</div>
+          <div class="aaa-stat-title" style="color:#065f46;" data-i18n="aaa_stat_buy">खरेदी सिग्नल्स (BUY)</div>
           <div class="aaa-stat-val" style="color:#065f46;" id="aaaStatBuySignals">0</div>
         </div>
         <div class="aaa-stat-card">
-          <div class="aaa-stat-title" style="color:#991b1b;">विक्री सिग्नल्स (SELL)</div>
+          <div class="aaa-stat-title" style="color:#991b1b;" data-i18n="aaa_stat_sell">विक्री सिग्नल्स (SELL)</div>
           <div class="aaa-stat-val" style="color:#991b1b;" id="aaaStatSellSignals">0</div>
         </div>
         <div class="aaa-stat-card">
-          <div class="aaa-stat-title">शेवटचे स्कॅन (Last Scan)</div>
+          <div class="aaa-stat-title" data-i18n="aaa_stat_last_scan">शेवटचे स्कॅन (Last Scan)</div>
           <div class="aaa-stat-val" style="font-size:16px; margin-top:6px;" id="aaaStatLastScan">--:--</div>
         </div>
       </div>
@@ -393,13 +394,13 @@
       <!-- Controls & Filter Bar -->
       <div class="aaa-controls-bar">
         <div class="aaa-seg-group">
-          <button class="aaa-seg-btn active" data-type="ALL">सर्व सिग्नल्स</button>
-          <button class="aaa-seg-btn" data-type="BUY">🟢 BUY</button>
-          <button class="aaa-seg-btn" data-type="SELL">🔴 SELL</button>
+          <button class="aaa-seg-btn active" data-type="ALL" data-i18n="aaa_tab_all">सर्व सिग्नल्स</button>
+          <button class="aaa-seg-btn" data-type="BUY" data-i18n="aaa_tab_buy">🟢 BUY</button>
+          <button class="aaa-seg-btn" data-type="SELL" data-i18n="aaa_tab_sell">🔴 SELL</button>
         </div>
 
         <select id="aaaPatternFilter" class="aaa-filter-select">
-          <option value="">सर्व पॅटर्न्स (All Daily 1D Patterns)</option>
+          <option value="" data-i18n="aaa_opt_pat_all">सर्व पॅटर्न्स (All Daily 1D Patterns)</option>
           <option value="Bearish Harami">Bearish Harami (SELL - 1D)</option>
           <option value="Bullish Harami">Bullish Harami (BUY - 1D)</option>
           <option value="Bearish Engulfing">Bearish Engulfing (SELL - 1D)</option>
@@ -411,25 +412,25 @@
         </select>
 
         <select id="aaaLookbackFilter" class="aaa-filter-select">
-          <option value="3">मागील ३ दिवस (3 Daily Bars)</option>
-          <option value="5">मागील ५ दिवस (5 Daily Bars)</option>
-          <option value="10" selected>मागील १० दिवस (10 Daily Bars)</option>
-          <option value="15">मागील १५ दिवस (15 Daily Bars)</option>
+          <option value="3" data-i18n="aaa_opt_days_5">मागील ३ दिवस (3 Daily Bars)</option>
+          <option value="5" data-i18n="aaa_opt_days_5">मागील ५ दिवस (5 Daily Bars)</option>
+          <option value="10" selected data-i18n="aaa_opt_days_10">मागील १० दिवस (10 Daily Bars)</option>
+          <option value="15" data-i18n="aaa_opt_days_15">मागील १५ दिवस (15 Daily Bars)</option>
         </select>
 
         <select id="aaaTrendFilter" class="aaa-filter-select">
-          <option value="3" selected>३+ Daily कॅन्डल्स ट्रेंड</option>
-          <option value="4">४+ Daily कॅन्डल्स ट्रेंड (Standard)</option>
-          <option value="5">५+ Daily कॅन्डल्स ट्रेंड (Strong)</option>
+          <option value="3" selected data-i18n="aaa_opt_trend_3">३+ Daily कॅन्डल्स ट्रेंड</option>
+          <option value="4" data-i18n="aaa_opt_trend_4">४+ Daily कॅन्डल्स ट्रेंड (Standard)</option>
+          <option value="5" data-i18n="aaa_opt_trend_5">५+ Daily कॅन्डल्स ट्रेंड (Strong)</option>
         </select>
 
         <div style="flex:1; max-width:220px;">
-          <input type="text" id="aaaSearchInput" class="form-input" placeholder="🔍 स्टॉक शोधा..." />
+          <input type="text" id="aaaSearchInput" class="form-input" placeholder="🔍 स्टॉक शोधा..." data-i18n-placeholder="aaa_search_placeholder" />
         </div>
 
         <button id="aaaBtnScanNow" class="ts-btn-primary">
           <span>⚡</span>
-          <span>आता स्कॅन करा</span>
+          <span data-i18n="aaa_btn_scan">आता स्कॅन करा</span>
         </button>
       </div>
 
@@ -438,16 +439,16 @@
         <table class="aaa-table">
           <thead>
             <tr>
-              <th>स्टॉक सिम्बॉल</th>
-              <th>प्रकार</th>
-              <th>कॅन्डलस्टिक पॅटर्न</th>
-              <th>ट्रेंड स्ट्रेंग्थ</th>
-              <th>एन्ट्री (Entry)</th>
-              <th>स्टॉप लॉस (SL)</th>
-              <th>टार्गेट १ (1:1.5)</th>
-              <th>टार्गेट २ (1:2.5)</th>
-              <th>जोखीम (Risk)</th>
-              <th>कृती</th>
+              <th data-i18n="aaa_th_symbol">स्टॉक सिम्बॉल</th>
+              <th data-i18n="aaa_th_type">प्रकार</th>
+              <th data-i18n="aaa_th_pattern">कॅन्डलस्टिक पॅटर्न</th>
+              <th data-i18n="aaa_th_trend">ट्रेंड स्ट्रेंग्थ</th>
+              <th data-i18n="aaa_th_entry">एन्ट्री (Entry)</th>
+              <th data-i18n="aaa_th_sl">स्टॉप लॉस (SL)</th>
+              <th data-i18n="aaa_th_t1">टार्गेट १ (1:1.5)</th>
+              <th data-i18n="aaa_th_t2">टार्गेट २ (1:2.5)</th>
+              <th data-i18n="aaa_th_risk">जोखीम (Risk)</th>
+              <th data-i18n="aaa_th_action">कृती</th>
             </tr>
           </thead>
           <tbody id="aaaSignalsTableBody">
@@ -455,8 +456,8 @@
           </tbody>
         </table>
         <div id="aaaEmptyState" class="ts-empty-state" style="display:none; padding:30px;">
-          <h3>सध्याच्या फिल्टर्सनुसार कोणताही सिग्नल मिळालेला नाही</h3>
-          <p>कृपया वरील फिल्टर्स बदलून पुन्हा तपासा किंवा स्कॅन करा.</p>
+          <h3 data-i18n="aaa_empty_title">सध्याच्या फिल्टर्सनुसार कोणताही सिग्नल मिळालेला नाही</h3>
+          <p data-i18n="aaa_empty_sub">कृपया वरील फिल्टर्स बदलून पुन्हा तपासा किंवा स्कॅन करा.</p>
         </div>
       </div>
     </section>
@@ -473,35 +474,35 @@
       <div class="modal-header">
         <div style="display:flex; align-items:center; gap:8px;">
           <img src="./assets/logo.png" style="width:28px; height:28px;" />
-          <span class="modal-title">लॉगिन / नोंदणी विनंती (Portal Access)</span>
+          <span class="modal-title" data-i18n="auth_modal_title">लॉगिन / नोंदणी विनंती (Portal Access)</span>
         </div>
       </div>
       <div class="modal-body">
-        <p style="font-size:12px; color:var(--text-secondary);">
+        <p style="font-size:12px; color:var(--text-secondary);" data-i18n="auth_modal_desc">
           Finanthropist Educare च्या अधिकृत ट्रेडिंग प्लॅटफॉर्मवर आपले स्वागत आहे. पोर्टल ॲक्सेस करण्यासाठी कृपया आपली माहिती भरा.
         </p>
 
         <div class="form-group">
-          <label class="form-label">पूर्ण नाव (Full Name) *</label>
+          <label class="form-label" data-i18n="auth_lbl_name">पूर्ण नाव (Full Name) *</label>
           <input type="text" id="authInputName" class="form-input" placeholder="उदा. राहुल शर्मा" required />
         </div>
 
         <div class="form-group">
-          <label class="form-label">मोबाईल नंबर (Mobile Number) *</label>
+          <label class="form-label" data-i18n="auth_lbl_phone">मोबाईल नंबर (Mobile Number) *</label>
           <input type="tel" id="authInputPhone" class="form-input" placeholder="उदा. 9822012345" maxlength="10" required />
         </div>
 
         <div class="form-group">
-          <label class="form-label">ईमेल आयडी (Email ID) *</label>
+          <label class="form-label" data-i18n="auth_lbl_email">ईमेल आयडी (Email ID) *</label>
           <input type="email" id="authInputEmail" class="form-input" placeholder="उदा. rahul@gmail.com" required />
         </div>
 
-        <button class="btn-form-submit" id="btnSubmitAuth">
+        <button class="btn-form-submit" id="btnSubmitAuth" data-i18n="auth_btn_submit">
           लॉगिन / ॲक्सेस विनंती पाठवा
         </button>
 
         <div style="text-align:center; margin-top:8px; font-size:11px;">
-          <a href="javascript:void(0)" id="linkHaveVipCode" style="color:#2563eb; text-decoration:none; font-weight:700;">
+          <a href="javascript:void(0)" id="linkHaveVipCode" style="color:#2563eb; text-decoration:none; font-weight:700;" data-i18n="auth_vip_link">
             🔑 व्हीआयपी अप्रूव्हल कोड आहे का?
           </a>
         </div>
@@ -554,15 +555,15 @@
         <div style="text-align:center; padding:10px 0;">
           <h2 id="tsModalSymbol" style="font-size:22px; font-weight:800;">NIFTY 50</h2>
           <div style="font-size:13px; color:#2563eb; font-weight:800; margin-top:4px;">
-            शिफारस: <span id="tsModalATM">--</span>
+            <span data-i18n="alert_lbl_rec">शिफारस:</span> <span id="tsModalATM">--</span>
           </div>
         </div>
         <div class="ts-card-grid">
-          <div class="ts-cell"><span class="ts-cell-label">एन्ट्री भाव:</span><strong class="ts-cell-val" id="tsModalEntry">--</strong></div>
-          <div class="ts-cell"><span class="ts-cell-label">स्टॉप लॉस:</span><strong class="ts-cell-val text-danger" id="tsModalSL">--</strong></div>
-          <div class="ts-cell"><span class="ts-cell-label">टार्गेट:</span><strong class="ts-cell-val text-success" id="tsModalTgt">--</strong></div>
+          <div class="ts-cell"><span class="ts-cell-label" data-i18n="alert_lbl_entry">एन्ट्री भाव:</span><strong class="ts-cell-val" id="tsModalEntry">--</strong></div>
+          <div class="ts-cell"><span class="ts-cell-label" data-i18n="alert_lbl_sl">स्टॉप लॉस:</span><strong class="ts-cell-val text-danger" id="tsModalSL">--</strong></div>
+          <div class="ts-cell"><span class="ts-cell-label" data-i18n="alert_lbl_tgt">टार्गेट:</span><strong class="ts-cell-val text-success" id="tsModalTgt">--</strong></div>
         </div>
-        <button class="btn-form-submit" onclick="TradeSetupModule.closeSignalModal()">समजले (Close)</button>
+        <button class="btn-form-submit" onclick="TradeSetupModule.closeSignalModal()" data-i18n="alert_btn_close">समजले (Close)</button>
       </div>
     </div>
   </div>
@@ -582,7 +583,7 @@
           <canvas id="tsHaCanvas"></canvas>
         </div>
         <div style="margin-top:12px; display:flex; justify-content:flex-end; gap:8px;">
-          <button class="ts-btn-solid" onclick="TradeSetupModule.openModalSignalInMainChart()" style="padding:7px 16px; font-size:12px;">
+          <button class="ts-btn-solid" onclick="TradeSetupModule.openModalSignalInMainChart()" style="padding:7px 16px; font-size:12px;" data-i18n="ts_btn_load_main">
             🚀 मुख्य टर्मिनलवर लोड करा
           </button>
         </div>
@@ -612,15 +613,15 @@
   <div class="modal-overlay" id="createWlModal">
     <div class="modal-card">
       <div class="modal-header">
-        <span class="modal-title">नवीन वॉचलिस्ट तयार करा</span>
+        <span class="modal-title" data-i18n="modal_create_wl_title">नवीन वॉचलिस्ट तयार करा</span>
         <button class="modal-close-btn" id="btnCloseCreateWl">&times;</button>
       </div>
       <div class="modal-body">
         <div class="form-group">
-          <label class="form-label">वॉचलिस्टचे नाव द्या:</label>
+          <label class="form-label" data-i18n="modal_create_wl_lbl">वॉचलिस्टचे नाव द्या:</label>
           <input type="text" id="inputNewWlName" class="form-input" placeholder="उदा. My Favorites, Swing Trading, Top Tech..." />
         </div>
-        <button class="btn-form-submit" id="btnSubmitNewWl">तयार करा (Create)</button>
+        <button class="btn-form-submit" id="btnSubmitNewWl" data-i18n="modal_create_wl_btn">तयार करा (Create)</button>
       </div>
     </div>
   </div>
@@ -629,7 +630,7 @@
   <div class="modal-overlay" id="addToWlModal">
     <div class="modal-card">
       <div class="modal-header">
-        <span class="modal-title">वॉचलिस्टमध्ये जोडा</span>
+        <span class="modal-title" data-i18n="modal_add_wl_title">वॉचलिस्टमध्ये जोडा</span>
         <button class="modal-close-btn" id="btnCloseAddToWl">&times;</button>
       </div>
       <div class="modal-body">
@@ -637,14 +638,14 @@
           स्टॉक: <strong id="addToWlStockName" style="color:#2563eb;">--</strong>
         </div>
         <div class="form-group">
-          <label class="form-label">कोणत्या वॉचलिस्टमध्ये जोडायचे?</label>
+          <label class="form-label" data-i18n="modal_add_wl_lbl">कोणत्या वॉचलिस्टमध्ये जोडायचे?</label>
           <select id="selectTargetWatchlist" class="form-input" style="font-size:13px; font-weight:700;">
             <!-- Populated dynamically -->
           </select>
         </div>
         <div style="display:flex; gap:8px; margin-top:8px;">
-          <button class="btn-form-submit" id="btnConfirmAddToWl" style="flex:1;">जोडा (Add Stock)</button>
-          <button class="action-btn" id="btnCreateWlFromAdd" style="background:#f1f5f9; padding:8px 14px; border:1px solid var(--border-subtle); border-radius:6px; font-weight:700; cursor:pointer; font-size:12px; white-space:nowrap;">
+          <button class="btn-form-submit" id="btnConfirmAddToWl" style="flex:1;" data-i18n="modal_add_wl_btn">जोडा (Add Stock)</button>
+          <button class="action-btn" id="btnCreateWlFromAdd" style="background:#f1f5f9; padding:8px 14px; border:1px solid var(--border-subtle); border-radius:6px; font-weight:700; cursor:pointer; font-size:12px; white-space:nowrap;" data-i18n="modal_add_wl_new_btn">
             ➕ नवीन यादी
           </button>
         </div>
@@ -653,6 +654,6 @@
   </div>
 
   <!-- Core Main Application Logic -->
-  <script src="./assets/app.js?v=20261019_v2"></script>
+  <script src="./assets/app.js?v=20261019_v3"></script>
 </body>
 </html>

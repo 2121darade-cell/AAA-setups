@@ -850,12 +850,14 @@ function updateMarketStatusDisplay() {
   const timeStr = now.toLocaleTimeString('en-IN', { hour12: false });
 
   if (isCurrentMarketOpen()) {
-    label.textContent = `${timeStr} IST • LIVE OPEN`;
+    const liveTxt = window.I18N ? I18N.t('market_live') : 'LIVE OPEN';
+    label.textContent = `${timeStr} IST • ${liveTxt}`;
     label.parentElement.style.background = '#ecfdf5';
     label.parentElement.style.borderColor = '#a7f3d0';
     label.parentElement.style.color = '#065f46';
   } else {
-    label.textContent = `${timeStr} IST • MARKET CLOSED`;
+    const closedTxt = window.I18N ? I18N.t('market_closed') : 'MARKET CLOSED';
+    label.textContent = `${timeStr} IST • ${closedTxt}`;
     label.parentElement.style.background = '#f1f5f9';
     label.parentElement.style.borderColor = '#cbd5e1';
     label.parentElement.style.color = '#64748b';
@@ -946,7 +948,8 @@ async function updateTradejiniBadge() {
       badgeText.textContent = `${data.clientCode || 'TR2488'} • ${data.todayDate || 'Live'}`;
       if (badgeDot) badgeDot.style.background = '#22c55e';
     } else {
-      badgeText.textContent = 'Tradejini री-लॉगिन आवश्यक';
+      const isEn = window.I18N && window.I18N.getLang() === 'en';
+      badgeText.textContent = isEn ? 'Tradejini Login Required' : 'Tradejini री-लॉगिन आवश्यक';
       if (badgeDot) badgeDot.style.background = '#ef4444';
     }
   } catch (e) {
@@ -2042,20 +2045,21 @@ function initWatchlistSidebar() {
     }
 
     if (items.length === 0) {
+      const isEn = window.I18N && window.I18N.getLang() === 'en';
       if (isCustom && (!cw.stocks || cw.stocks.length === 0)) {
         listEl.innerHTML = `
           <div style="padding:24px 14px; text-align:center; color:#64748b;">
             <div style="font-size:28px; margin-bottom:8px;">📋</div>
-            <strong style="color:#0f172a; font-size:13px;">ही वॉचलिस्ट रिकामी आहे</strong>
+            <strong style="color:#0f172a; font-size:13px;">${isEn ? 'This watchlist is empty' : 'ही वॉचलिस्ट रिकामी आहे'}</strong>
             <p style="font-size:11px; margin-top:4px; line-height:1.4;">
-              वर सर्च बारमध्ये नाव टाईप करा व <strong>➕</strong> वर क्लिक करा, किंवा चार्टवरील <strong>⭐ + Watchlist</strong> बटन दाबा.
+              ${isEn ? 'Type a stock name in the search bar above and click <strong>➕</strong>, or click the <strong>⭐ + Watchlist</strong> button on the chart toolbar.' : 'वर सर्च बारमध्ये नाव टाईप करा व <strong>➕</strong> वर क्लिक करा, किंवा चार्टवरील <strong>⭐ + Watchlist</strong> बटन दाबा.'}
             </p>
           </div>
         `;
       } else {
         listEl.innerHTML = `
           <div style="padding:20px; text-align:center; color:#94a3b8; font-size:12px;">
-            कोणताही स्टॉक सापडला नाही.
+            ${isEn ? 'No stocks found.' : 'कोणताही स्टॉक सापडला नाही.'}
           </div>
         `;
       }
@@ -2063,6 +2067,7 @@ function initWatchlistSidebar() {
     }
 
     listEl.innerHTML = items.map(it => {
+      const isEn = window.I18N && window.I18N.getLang() === 'en';
       const sign = it.isUp ? '+' : '';
       const col = it.isUp ? 'var(--green-bull)' : 'var(--red-bear)';
       const bg = it.isUp ? '#ecfdf5' : '#fef2f2';
@@ -2070,12 +2075,12 @@ function initWatchlistSidebar() {
       let actionButton = '';
       if (it.isSearchResultForCustom) {
         if (it.isAlreadyIn) {
-          actionButton = `<span style="font-size:10px; color:#10b981; font-weight:800; margin-left:6px;">✓ जोडले</span>`;
+          actionButton = `<span style="font-size:10px; color:#10b981; font-weight:800; margin-left:6px;">${isEn ? '✓ Added' : '✓ जोडले'}</span>`;
         } else {
-          actionButton = `<button class="btn-add-wl" onclick="event.stopPropagation(); addStockToCurrentWl('${it.symbol}')" title="या वॉचलिस्टमध्ये जोडा">➕ Add</button>`;
+          actionButton = `<button class="btn-add-wl" onclick="event.stopPropagation(); addStockToCurrentWl('${it.symbol}')" title="${isEn ? 'Add to this watchlist' : 'या वॉचलिस्टमध्ये जोडा'}">➕ Add</button>`;
         }
       } else if (it.isCustomItem) {
-        actionButton = `<button class="btn-remove-wl" onclick="event.stopPropagation(); removeStockFromCustomWl('${it.symbol}')" title="यादीतून काढा">✕</button>`;
+        actionButton = `<button class="btn-remove-wl" onclick="event.stopPropagation(); removeStockFromCustomWl('${it.symbol}')" title="${isEn ? 'Remove from list' : 'यादीतून काढा'}">✕</button>`;
       }
 
       return `

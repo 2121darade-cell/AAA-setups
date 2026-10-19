@@ -316,12 +316,22 @@ const AAAScreenerModule = (function () {
 
     tbody.innerHTML = filtered.map(s => {
       const isBuy = s.type === 'BUY';
+      const isEn = window.I18N && window.I18N.getLang() === 'en';
       const typeBadge = isBuy ? '<span class="aaa-pill aaa-pill-buy">🟢 BUY (1D)</span>' : '<span class="aaa-pill aaa-pill-sell">🔴 SELL (1D)</span>';
       const statusStyle = getStatusBadgeStyle(s.status || 'ACTIVE');
-      const statusText = s.statusText || '🟢 ट्रेड चालू (Active)';
+      let statusText = s.statusText || '🟢 ट्रेड चालू (Active)';
+      if (window.I18N) {
+        if (s.status === 'TARGET_2_HIT') statusText = I18N.t('status_tgt2');
+        else if (s.status === 'TARGET_1_HIT') statusText = I18N.t('status_tgt1');
+        else if (s.status === 'SL_HIT') statusText = I18N.t('status_sl');
+        else if (s.status === 'ACTIVE') statusText = I18N.t('status_active');
+      }
       const trendBadge = isBuy
         ? `<span class="aaa-trend-badge down">📉 ${s.trendLength} Red Days</span>`
         : `<span class="aaa-trend-badge up">📈 ${s.trendLength} Green Days</span>`;
+
+      const btnChartText = window.I18N ? I18N.t('aaa_btn_chart') : '🔍 1D चार्ट';
+      const btnLoadText = window.I18N ? I18N.t('aaa_btn_load') : '📊 लोड (1D)';
 
       return `
         <tr style="${s.status === 'SL_HIT' ? 'opacity:0.86;' : ''}">
@@ -349,10 +359,10 @@ const AAAScreenerModule = (function () {
           <td class="aaa-price">₹${s.risk}</td>
           <td>
             <button class="aaa-action-btn" onclick="AAAScreenerModule.openChartModal('${s.id}')">
-              🔍 1D चार्ट
+              ${btnChartText}
             </button>
             <button class="aaa-action-btn-primary" onclick="AAAScreenerModule.openInMainPortal('${s.symbol}')">
-              📊 लोड (1D)
+              ${btnLoadText}
             </button>
           </td>
         </tr>
@@ -366,8 +376,11 @@ const AAAScreenerModule = (function () {
     currentChartData = s;
     const modal = document.getElementById('aaaChartModal');
     if (!modal) return;
+    const isEn = window.I18N && window.I18N.getLang() === 'en';
+    const entryLbl = isEn ? 'Entry' : 'एन्ट्री';
+    const ltpLbl = isEn ? 'Live LTP' : 'चालू भाव (LTP)';
     document.getElementById('aaaModalSymbol').textContent = `${s.symbol} - ${s.pattern} (${s.type} • ${s.statusText || 'Active'})`;
-    document.getElementById('aaaModalSubtitle').textContent = `एन्ट्री: ₹${s.entry} | SL: ₹${s.stopLoss} | Tgt 1: ₹${s.target1} | Tgt 2: ₹${s.target2} | चालू भाव (LTP): ₹${s.ltp || s.entry}${s.ohlcSummary ? '  •  ' + s.ohlcSummary : ''}`;
+    document.getElementById('aaaModalSubtitle').textContent = `${entryLbl}: ₹${s.entry} | SL: ₹${s.stopLoss} | Tgt 1: ₹${s.target1} | Tgt 2: ₹${s.target2} | ${ltpLbl}: ₹${s.ltp || s.entry}${s.ohlcSummary ? '  •  ' + s.ohlcSummary : ''}`;
     modal.classList.add('active');
     setTimeout(() => drawCandlestickModal(s), 50);
   }
@@ -492,6 +505,7 @@ const AAAScreenerModule = (function () {
 
     // Entry, SL & Target Overlay lines
     ctx.textAlign = 'right';
+    const isEn = window.I18N && window.I18N.getLang() === 'en';
     if (s.entry) {
       const yEnt = getY(s.entry);
       ctx.strokeStyle = '#2563eb';
@@ -503,7 +517,7 @@ const AAAScreenerModule = (function () {
       ctx.stroke();
       ctx.fillStyle = '#2563eb';
       ctx.font = 'bold 11px sans-serif';
-      ctx.fillText(`एन्ट्री (Close): ₹${s.entry}`, margin.left + plotW - 8, yEnt - 6);
+      ctx.fillText(`${isEn ? 'Entry (Close)' : 'एन्ट्री (Close)'}: ₹${s.entry}`, margin.left + plotW - 8, yEnt - 6);
     }
     if (s.stopLoss) {
       const ySl = getY(s.stopLoss);
@@ -529,7 +543,7 @@ const AAAScreenerModule = (function () {
       ctx.stroke();
       ctx.fillStyle = '#059669';
       ctx.font = 'bold 11px sans-serif';
-      ctx.fillText(`टार्गेट १: ₹${s.target1}`, margin.left + plotW - 8, yT1 - 5);
+      ctx.fillText(`${isEn ? 'Target 1' : 'टार्गेट १'}: ₹${s.target1}`, margin.left + plotW - 8, yT1 - 5);
     }
     ctx.setLineDash([]);
   }
@@ -564,12 +578,13 @@ const AAAScreenerModule = (function () {
     const btnScan = document.getElementById('aaaBtnScanNow');
     if (btnScan) {
       btnScan.addEventListener('click', () => {
+        const isEn = window.I18N && window.I18N.getLang() === 'en';
         btnScan.disabled = true;
-        btnScan.innerHTML = '<span>⏳</span><span>स्कॅन होत आहे...</span>';
+        btnScan.innerHTML = `<span>⏳</span><span>${isEn ? 'Scanning...' : 'स्कॅन होत आहे...'}</span>`;
         setTimeout(() => {
           runScreener();
           btnScan.disabled = false;
-          btnScan.innerHTML = '<span>⚡</span><span>आता स्कॅन करा (Scan Now)</span>';
+          btnScan.innerHTML = `<span>⚡</span><span>${isEn ? 'Scan Now' : 'आता स्कॅन करा'}</span>`;
         }, 600);
       });
     }
@@ -617,12 +632,22 @@ const AAAScreenerModule = (function () {
     }
   }
 
+  function onLanguageChange() {
+    renderTable();
+    const isEn = window.I18N && window.I18N.getLang() === 'en';
+    const btnScan = document.getElementById('aaaBtnScanNow');
+    if (btnScan) {
+      btnScan.innerHTML = `<span>⚡</span><span>${isEn ? 'Scan Now' : 'आता स्कॅन करा'}</span>`;
+    }
+  }
+
   return {
     init,
     runScreener,
     openChartModal,
     closeChartModal,
-    openInMainPortal
+    openInMainPortal,
+    onLanguageChange
   };
 })();
 

@@ -1,10 +1,13 @@
 // Service Worker for Finanthropist Educare Trading Terminal
-const CACHE_NAME = 'finanthropist-v14-chart-scroll-fix';
+const CACHE_NAME = 'finanthropist-v15-bilingual';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
   './assets/style.css',
   './assets/app.js',
+  './assets/i18n.js',
+  './assets/trade_setup.js',
+  './assets/aaa_screener.js',
   './assets/echarts.min.js',
   './assets/logo.png',
   './manifest.json',
