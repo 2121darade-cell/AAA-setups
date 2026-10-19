@@ -690,7 +690,7 @@ const AuthEngine = {
       this.renderAdminDashboard();
       syncUsersWithCloud();
     } else {
-      showToastNotification("अयोग्य ॲडमिन पासवर्ड! कृपया योग्य पासवर्ड प्रविष्ट करा.", "error");
+      showToastNotification("Invalid Admin PIN! Please enter the correct password.", "error");
     }
   },
 
@@ -724,7 +724,7 @@ const AuthEngine = {
     if (!tbody) return;
 
     if (db.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#94a3b8; padding:20px;">कोणतीही नोंदणी विनंती उपलब्ध नाही.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#94a3b8; padding:20px;">No registration requests available.</td></tr>';
       return;
     }
 
@@ -744,8 +744,8 @@ const AuthEngine = {
           <td>${u.date || '--'}</td>
           <td>${statusPill}</td>
           <td style="display:flex; gap:6px; flex-wrap:wrap;">
-            ${!isApp ? `<button class="btn-admin-approve" onclick="AuthEngine.approveUser('${u.id}', '${u.phone}')">✅ मंजूर करा</button>` : ''}
-            <button class="btn-admin-vip" onclick="AuthEngine.copyVipKey('${u.vipKey}', '${u.name}')" title="VIP कोड कॉपी करा">🔑 VIP Key</button>
+            ${!isApp ? `<button class="btn-admin-approve" onclick="AuthEngine.approveUser('${u.id}', '${u.phone}')">✅ Approve</button>` : ''}
+            <button class="btn-admin-vip" onclick="AuthEngine.copyVipKey('${u.vipKey}', '${u.name}')" title="Copy VIP Access Key">🔑 VIP Key</button>
             <button class="btn-admin-del" onclick="AuthEngine.deleteUser('${u.id}', '${u.phone}')">🗑️</button>
           </td>
         </tr>
@@ -762,7 +762,7 @@ const AuthEngine = {
       });
       const data = await res.json();
       if (res.ok && data.s === 'ok') {
-        showToastNotification(data.message || 'युझर मंजूर झाला आहे!', 'success');
+        showToastNotification(data.message || 'User approved successfully!', 'success');
       }
     } catch (e) {}
 
@@ -787,7 +787,7 @@ const AuthEngine = {
   },
 
   async deleteUser(userId, phone) {
-    if (!confirm('तुम्हाला नक्की या युझरला काढून टाकायचे आहे का?')) return;
+    if (!confirm('Are you sure you want to permanently delete this user?')) return;
 
     try {
       await fetch('./api/admin/delete-user', {
@@ -807,14 +807,14 @@ const AuthEngine = {
       await postCloudEvent({ action: "USER_DELETE", userId: userId, phone: target.phone });
     }
     await postCloudEvent({ action: "SYNC_ALL", users: db });
-    showToastNotification("युझर हटवला गेला आहे.", "info");
+    showToastNotification("User deleted successfully.", "info");
   },
 
   copyVipKey(key, name) {
-    const fullText = `Finanthropist Educare Portal VIP Key for ${name}:\nकोड: ${key}\nलिंक: ${window.location.origin}${window.location.pathname}?vip=${key}`;
+    const fullText = `Finanthropist Educare VIP Access Key for ${name}:\nKey: ${key}\nLink: ${window.location.origin}${window.location.pathname}?vip=${key}`;
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(fullText).then(() => {
-        showToastNotification(`व्हीआयपी की क्लिपबोर्डवर कॉपी केली आहे!`, "success");
+        showToastNotification("VIP Key copied to clipboard!", "success");
       }).catch(() => {
         showToastNotification(`VIP Code: ${key}`, "info");
       });
@@ -990,8 +990,8 @@ const AuthEngine = {
         btnRefreshCloud.textContent = "⏳ Syncing...";
         await syncUsersWithCloud();
         await this.renderAdminDashboard();
-        btnRefreshCloud.textContent = "🔄 रिफ्रेश (Sync Now)";
-        showToastNotification("क्लाउड डेटा यशस्वीरित्या सिंक झाला!", "success");
+        btnRefreshCloud.textContent = "🔄 Refresh (Sync Now)";
+        showToastNotification("Cloud data synchronized successfully!", "success");
       });
     }
 

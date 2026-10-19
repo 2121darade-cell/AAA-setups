@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="mr">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -148,91 +148,96 @@
       vertical-align: middle;
     }
     .admin-table tr:hover {
-      background: #fbfcfe;
+      background: #f8fafc;
     }
     .badge-status {
       display: inline-flex;
       align-items: center;
-      gap: 4px;
-      padding: 3px 8px;
-      border-radius: 6px;
+      padding: 3px 10px;
+      border-radius: 9999px;
       font-size: 11px;
       font-weight: 700;
+      letter-spacing: 0.5px;
     }
     .badge-pending {
       background: #fef3c7;
       color: #b45309;
+      border: 1px solid #fde68a;
     }
     .badge-approved {
       background: #d1fae5;
       color: #047857;
+      border: 1px solid #a7f3d0;
     }
     .badge-rejected {
       background: #fee2e2;
       color: #b91c1c;
+      border: 1px solid #fca5a5;
     }
     .btn-approve {
       background: #10b981;
       color: #ffffff;
       border: none;
-      padding: 6px 12px;
+      padding: 6px 14px;
       border-radius: 6px;
       font-weight: 700;
       font-size: 12px;
       cursor: pointer;
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      transition: background 0.15s;
+      transition: all 0.15s ease;
     }
     .btn-approve:hover {
       background: #059669;
     }
     .btn-reject {
-      background: #fee2e2;
-      color: #b91c1c;
-      border: 1px solid #fca5a5;
-      padding: 6px 12px;
+      background: #ef4444;
+      color: #ffffff;
+      border: none;
+      padding: 6px 14px;
       border-radius: 6px;
       font-weight: 700;
       font-size: 12px;
       cursor: pointer;
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      transition: background 0.15s;
+      transition: all 0.15s ease;
     }
     .btn-reject:hover {
-      background: #fecaca;
+      background: #dc2626;
     }
     .pin-modal-overlay {
       position: fixed;
       top: 0;
       left: 0;
-      width: 100%;
-      height: 100%;
+      right: 0;
+      bottom: 0;
       background: rgba(15, 23, 42, 0.7);
       backdrop-filter: blur(8px);
       display: flex;
       align-items: center;
       justify-content: center;
-      z-index: 9999;
+      z-index: 1000;
     }
     .pin-card {
       background: #ffffff;
       border-radius: 16px;
-      padding: 36px;
-      width: 90%;
-      max-width: 420px;
-      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+      padding: 32px 28px;
+      width: 100%;
+      max-width: 380px;
+      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2);
       text-align: center;
     }
     .pin-icon {
-      font-size: 44px;
-      margin-bottom: 12px;
+      width: 56px;
+      height: 56px;
+      background: #eff6ff;
+      color: #2563eb;
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 26px;
+      margin: 0 auto 16px auto;
     }
     .pin-title {
-      font-size: 20px;
+      font-size: 18px;
       font-weight: 800;
       margin-bottom: 6px;
       color: #0f172a;
@@ -241,6 +246,7 @@
       font-size: 13px;
       color: #64748b;
       margin-bottom: 20px;
+      line-height: 1.4;
     }
     .pin-input {
       width: 100%;
@@ -306,12 +312,12 @@
   <div class="pin-modal-overlay" id="pinOverlay">
     <div class="pin-card">
       <div class="pin-icon">🔐</div>
-      <div class="pin-title">Finanthropist ॲडमिन ॲक्सेस</div>
-      <div class="pin-desc">कृपया सुरक्षित ॲडमिन पिन (Admin Security PIN) प्रविष्ट करा:</div>
-      <input type="password" id="adminPinInput" class="pin-input" placeholder="Admin PIN टाका..." autofocus />
-      <button class="btn-submit-pin" id="btnUnlockAdmin">सुरक्षित लॉगिन (Login)</button>
+      <div class="pin-title">Finanthropist Admin Access</div>
+      <div class="pin-desc">Please enter the Admin Security PIN to continue:</div>
+      <input type="password" id="adminPinInput" class="pin-input" placeholder="Enter Admin PIN..." autofocus />
+      <button class="btn-submit-pin" id="btnUnlockAdmin">Unlock Admin Portal</button>
       <div id="pinErrorMsg" style="color:#ef4444; font-size:12px; font-weight:700; margin-top:12px; display:none;">
-        ⚠️ अमान्य पिन! कृपया बरोबर ॲडमिन पिन प्रविष्ट करा.
+        ⚠️ Invalid PIN! Please enter the correct Admin Security PIN.
       </div>
     </div>
   </div>
@@ -324,19 +330,19 @@
         <h1>
           Finanthropist Educare <span class="admin-badge">Admin Portal</span>
         </h1>
-        <div class="admin-subtitle">विद्यार्थी मंजुरी व क्लाउड मॅनेजमेंट सूट • Private Suite</div>
+        <div class="admin-subtitle">Client Onboarding & Real-Time Trading Operations • Control Suite</div>
       </div>
     </div>
     <div style="display:flex; align-items:center; gap:14px;">
       <div class="cloud-pulse">
         <span class="pulse-dot"></span>
-        <span id="cloudStatusText">रिअल-टाईम क्लाउड कनेक्टेड</span>
+        <span id="cloudStatusText">Real-Time Cloud Connected</span>
       </div>
       <a href="./index.html" class="action-btn" style="text-decoration:none; padding:8px 14px; background:#f1f5f9; color:#334155; border-radius:8px; font-size:12px; font-weight:700;">
-        📈 ट्रेडिंग टर्मिनलवर जा
+        📈 Open Trading Terminal
       </a>
       <button id="btnLogoutAdmin" class="action-btn" style="padding:8px 14px; background:#fee2e2; color:#b91c1c; border:none; border-radius:8px; font-size:12px; font-weight:700; cursor:pointer;">
-        🚪 लॉगआउट
+        🚪 Logout
       </button>
     </div>
   </header>
@@ -349,42 +355,42 @@
       <div class="kpi-card">
         <div class="kpi-icon" style="background:#fef3c7; color:#b45309;">🟡</div>
         <div class="kpi-info">
-          <h4>प्रलंबित विनंत्या (Pending)</h4>
+          <h4>Pending Requests</h4>
           <div class="val" id="kpiPendingCount">0</div>
         </div>
       </div>
       <div class="kpi-card">
         <div class="kpi-icon" style="background:#d1fae5; color:#047857;">✅</div>
         <div class="kpi-info">
-          <h4>मंजूर विद्यार्थी (Approved)</h4>
+          <h4>Approved Clients</h4>
           <div class="val" id="kpiApprovedCount">0</div>
         </div>
       </div>
       <div class="kpi-card">
         <div class="kpi-icon" style="background:#e0f2fe; color:#0284c7;">👥</div>
         <div class="kpi-info">
-          <h4>एकूण युजर्स (Total)</h4>
+          <h4>Total Users</h4>
           <div class="val" id="kpiTotalCount">0</div>
         </div>
       </div>
       <div class="kpi-card">
         <div class="kpi-icon" style="background:#f3e8ff; color:#7e22ce;">⭐</div>
         <div class="kpi-info">
-          <h4>VIP मास्टर कोड</h4>
+          <h4>VIP Master Code</h4>
           <div class="val" style="font-size:18px; font-family:'JetBrains Mono', monospace; color:#7e22ce;">FINVIP2026</div>
         </div>
       </div>
     </div>
 
-    <!-- Panel 1: Pending Student Approvals (Top Priority) -->
+    <!-- Panel 1: Pending Client Approvals (Top Priority) -->
     <div class="panel-card" style="border-left: 4px solid #f59e0b;">
       <div class="panel-header">
         <h2>
-          <span>🟡</span> नवीन प्रलंबित प्रवेश विनंत्या (Pending Requests)
+          <span>🟡</span> New Pending Admission Requests
           <span id="badgePendingLive" style="background:#f59e0b; color:#fff; font-size:11px; padding:2px 8px; border-radius:12px; font-weight:700;">0</span>
         </h2>
         <div style="font-size:12px; color:#64748b;">
-          विद्यार्थी मोबाईलवरून विनंती पाठवताच सेकंदात येथे आपोआप दिसेल.
+          Incoming registration requests from Tradejini account holders appear here in real time.
         </div>
       </div>
 
@@ -392,12 +398,12 @@
         <table class="admin-table">
           <thead>
             <tr>
-              <th>विद्यार्थ्याचे नाव</th>
-              <th>मोबाईल नंबर</th>
+              <th>Client Name</th>
+              <th>Mobile Number</th>
               <th>Tradejini Client ID</th>
-              <th>नोंदणी वेळ</th>
-              <th>स्थिती</th>
-              <th style="text-align:right;">कारवाई (Action)</th>
+              <th>Registration Time</th>
+              <th>Status</th>
+              <th style="text-align:right;">Actions</th>
             </tr>
           </thead>
           <tbody id="tablePendingBody">
@@ -410,11 +416,11 @@
     <!-- Panel 2: All Users Directory -->
     <div class="panel-card">
       <div class="panel-header">
-        <h2><span>👥</span> सर्व नोंदणीकृत विद्यार्थी व युजर्स (All Users)</h2>
+        <h2><span>👥</span> Registered Clients & Users Directory</h2>
         <div style="display:flex; gap:10px; align-items:center;">
-          <input type="text" id="adminUserSearch" placeholder="🔍 नाव, मोबाईल किंवा Tradejini ID शोधा..." style="padding:6px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:12px; width:240px;" />
+          <input type="text" id="adminUserSearch" placeholder="🔍 Search name, phone, or Tradejini ID..." style="padding:6px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:12px; width:260px;" />
           <button id="btnExportUsersCsv" style="background:#f1f5f9; border:1px solid #cbd5e1; padding:6px 12px; border-radius:6px; font-size:12px; font-weight:700; cursor:pointer;">
-            📥 CSV एक्सपोर्ट
+            📥 Export CSV
           </button>
         </div>
       </div>
@@ -423,13 +429,13 @@
         <table class="admin-table">
           <thead>
             <tr>
-              <th>नाव</th>
-              <th>मोबाईल</th>
+              <th>Name</th>
+              <th>Mobile</th>
               <th>Tradejini Client ID</th>
-              <th>रोल</th>
-              <th>नोंदणी तारीख</th>
-              <th>स्थिती</th>
-              <th style="text-align:right;">मॅनेज करा</th>
+              <th>Role</th>
+              <th>Registration Date</th>
+              <th>Status</th>
+              <th style="text-align:right;">Manage</th>
             </tr>
           </thead>
           <tbody id="tableAllUsersBody">
@@ -443,40 +449,40 @@
     <div class="panel-card" style="border-left: 4px solid #10b981;">
       <div class="panel-header">
         <h2>
-          <span>⚡</span> Tradejini CubePlus API — दैनिक ऑटो-लॉगिन व डेटा सिंक कंट्रोल
-          <span id="badgeTjConn" style="background:#10b981; color:#fff; font-size:11px; padding:2px 8px; border-radius:12px; font-weight:700;">कनेक्टेड</span>
+          <span>⚡</span> Tradejini CubePlus API — Daily Auto-Login & Data Sync Control
+          <span id="badgeTjConn" style="background:#10b981; color:#fff; font-size:11px; padding:2px 8px; border-radius:12px; font-weight:700;">Connected</span>
         </h2>
         <button id="btnAdminForceTjAuth" class="btn-approve" style="background:#2563eb; padding:8px 16px; font-size:13px;">
-          🔄 त्वरित ऑटो-लॉगिन व आजचा डेटा सिंक करा
+          🔄 Force Auto-Login & Sync Today's Data
         </button>
       </div>
 
       <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:14px; margin-bottom:18px;">
         <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:12px;">
-          <div style="font-size:11px; color:#64748b; font-weight:600; text-transform:uppercase;">ट्रेडजिनी क्लायंट कोड</div>
+          <div style="font-size:11px; color:#64748b; font-weight:600; text-transform:uppercase;">Tradejini Client Code</div>
           <div style="font-size:16px; font-weight:800; color:#0f172a; margin-top:4px;" id="adminTjClientCode">TR2488</div>
         </div>
         <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:12px;">
-          <div style="font-size:11px; color:#64748b; font-weight:600; text-transform:uppercase;">आजची ट्रेडिंग तारीख</div>
-          <div style="font-size:16px; font-weight:800; color:#0f172a; margin-top:4px;" id="adminTjToday">15 Oct 2026</div>
+          <div style="font-size:11px; color:#64748b; font-weight:600; text-transform:uppercase;">Today's Trading Date</div>
+          <div style="font-size:16px; font-weight:800; color:#0f172a; margin-top:4px;" id="adminTjToday">--</div>
         </div>
         <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:12px;">
-          <div style="font-size:11px; color:#64748b; font-weight:600; text-transform:uppercase;">शेवटचे ऑटो-लॉगिन</div>
-          <div style="font-size:13px; font-weight:700; color:#059669; margin-top:4px;" id="adminTjLastLogin">सक्रिय</div>
+          <div style="font-size:11px; color:#64748b; font-weight:600; text-transform:uppercase;">Last Auto-Login</div>
+          <div style="font-size:13px; font-weight:700; color:#059669; margin-top:4px;" id="adminTjLastLogin">Active</div>
         </div>
         <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:12px;">
-          <div style="font-size:11px; color:#64748b; font-weight:600; text-transform:uppercase;">कॅश केलेले इन्स्ट्रुमेंट्स</div>
+          <div style="font-size:11px; color:#64748b; font-weight:600; text-transform:uppercase;">Cached Instruments Universe</div>
           <div style="font-size:16px; font-weight:800; color:#2563eb; margin-top:4px;" id="adminTjUniverse">189 Stocks</div>
         </div>
       </div>
 
       <div style="background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; padding:12px 16px; font-size:12px; color:#1e40af; line-height:1.6;">
-        <strong>🤖 स्वयंचलित दैनिक वेळापत्रक (Daily Auto-Login Schedule):</strong><br />
-        • <strong>08:00 IST:</strong> सकाळचे प्री-मार्केट ऑटो-लॉगिन (RFC 6238 TOTP).<br />
-        • <strong>08:45 IST:</strong> कालचा शिळा डेटा/कॅश स्वयंचलित फ्लश (Cache Wipe).<br />
-        • <strong>09:08 IST:</strong> प्री-मार्केट टोकन पडताळणी.<br />
-        • <strong>09:16 व 09:21 IST:</strong> मार्केट ओपनिंग सिंक व 1D कॅन्डल वार्मअप.<br />
-        • <strong>मार्केट वेळेत (09:15 - 15:30):</strong> दर 60 सेकंदांनी आजच्या लाइव्ह भावांसह 1D कॅन्डल्स अपडेट होतात.
+        <strong>🤖 Automated Daily Engine Schedule:</strong><br />
+        • <strong>08:00 IST:</strong> Morning pre-market automated login (RFC 6238 TOTP authentication).<br />
+        • <strong>08:45 IST:</strong> Previous day stale cache wipe & memory purge.<br />
+        • <strong>09:08 IST:</strong> Pre-market token validity verification.<br />
+        • <strong>09:16 & 09:21 IST:</strong> Market open sync & 1D candlestick cache warmup.<br />
+        • <strong>Market Hours (09:15 - 15:30 IST):</strong> Real-time 60-second live quotes sweep & today's forming 1D candle synthesis.
       </div>
     </div>
 
@@ -491,9 +497,8 @@
     const USERS_STORAGE_KEY = "fin_registered_users_v2";
 
     const DEFAULT_USERS = [
-      { id: "admin_1", name: "Admin (मुख्य व्यवस्थापक)", phone: "9999999999", role: "ADMIN", status: "APPROVED", date: "2026-09-17 10:00" },
-      { id: "demo_1", name: "Demo User", phone: "9876543210", role: "USER", status: "APPROVED", date: "2026-09-17 11:30" },
-      { id: "usr_9359998294", name: "test", phone: "9359998294", role: "USER", status: "PENDING", date: "2026-09-18 16:55" }
+      { id: "admin_1", name: "Finanthropist Admin", phone: "9999999999", tradejiniClientId: "TR2488", role: "ADMIN", status: "APPROVED", date: "2026-10-19 10:00" },
+      { id: "demo_1", name: "Demo User", phone: "9876543210", tradejiniClientId: "TR1001", role: "USER", status: "APPROVED", date: "2026-10-19 11:30" }
     ];
 
     function getUsers() {
@@ -586,10 +591,10 @@
           } catch (e) {}
         };
         es.onerror = function () {
-          document.getElementById('cloudStatusText').textContent = "क्लाउड रिकनेक्ट होत आहे...";
+          document.getElementById('cloudStatusText').textContent = "Reconnecting to cloud...";
         };
         es.onopen = function () {
-          document.getElementById('cloudStatusText').textContent = "रिअल-टाईम क्लाउड कनेक्टेड";
+          document.getElementById('cloudStatusText').textContent = "Real-Time Cloud Connected";
         };
       } catch (err) {
         console.warn("SSE init error:", err);
@@ -602,9 +607,10 @@
 
       if (payload.type === "REGISTER_REQUEST" && payload.user) {
         const u = payload.user;
-        const existingIdx = users.findIndex(x => x.phone === u.phone);
+        const existingIdx = users.findIndex(x => (x.phone && x.phone === u.phone) || (x.id && x.id === u.id));
         if (existingIdx >= 0) {
           users[existingIdx].name = u.name;
+          users[existingIdx].tradejiniClientId = u.tradejiniClientId || users[existingIdx].tradejiniClientId;
           users[existingIdx].status = "PENDING";
           users[existingIdx].date = u.date || new Date().toLocaleString('en-IN');
         } else {
@@ -612,6 +618,8 @@
             id: u.id || `usr_${Date.now()}`,
             name: u.name,
             phone: u.phone,
+            email: u.email || '',
+            tradejiniClientId: u.tradejiniClientId || '--',
             role: "USER",
             status: "PENDING",
             date: u.date || new Date().toLocaleString('en-IN')
@@ -668,12 +676,12 @@
         status: "APPROVED",
         timestamp: Date.now()
       });
-      alert(`✅ युझर (${phone}) मंजूर करण्यात आला! त्याचा ॲक्सेस लगेच सुरु होईल.`);
+      alert(`✅ User (${phone}) has been approved! Terminal access is now unlocked.`);
       renderDashboard();
     };
 
     window.rejectUser = async function(phone) {
-      if (!confirm(`तुम्हाला नक्की या युजरची विनंती रद्द करायची आहे का?`)) return;
+      if (!confirm(`Are you sure you want to reject this user registration request?`)) return;
       const users = getUsers();
       const user = users.find(u => u.phone === phone);
       if (user) {
@@ -691,7 +699,7 @@
     };
 
     window.deleteUser = async function(phone) {
-      if (!confirm(`हा युजर कायमचा काढून टाकायचा आहे का?`)) return;
+      if (!confirm(`Are you sure you want to permanently delete this user?`)) return;
       try {
         await fetch('./api/admin/delete-user', {
           method: 'POST',
@@ -734,7 +742,7 @@
       // Table 1: Pending Users
       const tbPending = document.getElementById('tablePendingBody');
       if (pendingUsers.length === 0) {
-        tbPending.innerHTML = `<tr><td colspan="6" style="text-align:center; color:#94a3b8; padding:24px;">कोणतीही प्रलंबित विनंती नाही. सर्व विनंत्या मंजूर झालेल्या आहेत!</td></tr>`;
+        tbPending.innerHTML = `<tr><td colspan="6" style="text-align:center; color:#94a3b8; padding:24px;">No pending requests available. All users are approved!</td></tr>`;
       } else {
         tbPending.innerHTML = pendingUsers.map(u => `
           <tr>
@@ -744,8 +752,8 @@
             <td style="color:#64748b;">${u.date || '--'}</td>
             <td><span class="badge-status badge-pending">🟡 PENDING</span></td>
             <td style="text-align:right;">
-              <button class="btn-approve" onclick="approveUser('${u.phone}')">✅ मंजूर करा (Approve)</button>
-              <button class="btn-reject" style="margin-left:6px;" onclick="rejectUser('${u.phone}')">❌ रद्द करा</button>
+              <button class="btn-approve" onclick="approveUser('${u.phone}')">✅ Approve Access</button>
+              <button class="btn-reject" style="margin-left:6px;" onclick="rejectUser('${u.phone}')">❌ Reject</button>
             </td>
           </tr>
         `).join('');
@@ -776,8 +784,8 @@
             <td style="color:#64748b;">${u.date || '--'}</td>
             <td>${badge}</td>
             <td style="text-align:right;">
-              ${u.status !== 'APPROVED' ? `<button class="btn-approve" style="padding:4px 8px; font-size:11px;" onclick="approveUser('${u.phone}')">✅ मंजूर</button>` : ''}
-              ${u.status !== 'REJECTED' ? `<button class="btn-reject" style="padding:4px 8px; font-size:11px; margin-left:4px;" onclick="rejectUser('${u.phone}')">रद्द</button>` : ''}
+              ${u.status !== 'APPROVED' ? `<button class="btn-approve" style="padding:4px 8px; font-size:11px;" onclick="approveUser('${u.phone}')">✅ Approve</button>` : ''}
+              ${u.status !== 'REJECTED' ? `<button class="btn-reject" style="padding:4px 8px; font-size:11px; margin-left:4px;" onclick="rejectUser('${u.phone}')">Reject</button>` : ''}
               ${u.role !== 'ADMIN' ? `<button style="background:none; border:none; color:#ef4444; cursor:pointer; font-size:12px; margin-left:6px;" onclick="deleteUser('${u.phone}')" title="Delete">🗑️</button>` : ''}
             </td>
           </tr>
@@ -790,7 +798,7 @@
     // CSV Export
     document.getElementById('btnExportUsersCsv')?.addEventListener('click', () => {
       const users = getUsers();
-      const csv = "नाव,मोबाईल,रोल,स्थिती,नोंदणी तारीख\n" + users.map(u => `"${u.name}","${u.phone}","${u.role || 'USER'}","${u.status}","${u.date || ''}"`).join("\n");
+      const csv = "Name,Mobile,Tradejini_ID,Role,Status,Registration_Date\n" + users.map(u => `"${u.name}","${u.phone}","${u.tradejiniClientId || ''}","${u.role || 'USER'}","${u.status}","${u.date || ''}"`).join("\n");
       const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -812,13 +820,13 @@
         const elUniv = document.getElementById('adminTjUniverse');
 
         if (badge) {
-          badge.textContent = data.connected ? '🟢 कनेक्टेड (Active)' : '🔴 डिस्कनेक्टेड';
+          badge.textContent = data.connected ? '🟢 Connected (Active)' : '🔴 Disconnected';
           badge.style.background = data.connected ? '#10b981' : '#ef4444';
         }
         if (elClient) elClient.textContent = data.clientCode || 'TR2488';
-        if (elToday) elToday.textContent = data.todayDate || '15 Oct 2026';
+        if (elToday) elToday.textContent = data.todayDate || '19 Oct 2026';
         if (elLogin) elLogin.textContent = data.lastLoginAt || 'Active';
-        if (elUniv) elUniv.textContent = `${data.cachedDailyUniverseSize || 189} इन्स्ट्रुमेंट्स`;
+        if (elUniv) elUniv.textContent = `${data.cachedDailyUniverseSize || 189} Stocks`;
       } catch (e) {}
     }
 
@@ -826,21 +834,21 @@
     if (btnAdminForceTj) {
       btnAdminForceTj.addEventListener('click', async () => {
         btnAdminForceTj.disabled = true;
-        btnAdminForceTj.innerHTML = '⏳ ऑटो-लॉगिन व डेटा सिंक होत आहे...';
+        btnAdminForceTj.innerHTML = '⏳ Auto-login and data sync in progress...';
         try {
           const res = await fetch('./api/tradejini/auth-refresh', { method: 'POST' });
           const data = await res.json();
           if (data && data.s === 'ok') {
-            alert(`✅ Tradejini दैनिक ऑटो-लॉगिन यशस्वी!\nखाते: ${data.clientCode}\nतारीख: ${data.todayDate}\nटोकन वैध: ${data.tokenExpiresAt}`);
+            alert(`✅ Tradejini daily auto-login successful!\nAccount: ${data.clientCode}\nDate: ${data.todayDate}\nToken valid until: ${data.tokenExpiresAt}`);
             updateAdminTradejiniStatus();
           } else {
-            alert(`⚠️ त्रुटी: ${data.message || 'Error'}`);
+            alert(`⚠️ Error: ${data.message || 'Error'}`);
           }
         } catch (err) {
-          alert(`❌ सर्व्हर त्रुटी: ${err.message}`);
+          alert(`❌ Server error: ${err.message}`);
         } finally {
           btnAdminForceTj.disabled = false;
-          btnAdminForceTj.innerHTML = '🔄 त्वरित ऑटो-लॉगिन व आजचा डेटा सिंक करा';
+          btnAdminForceTj.innerHTML = '🔄 Force Auto-Login & Sync Today\'s Data';
         }
       });
     }
