@@ -1,5 +1,5 @@
 // Service Worker for Finanthropist Educare Trading Terminal
-const CACHE_NAME = 'finanthropist-v15-bilingual';
+const CACHE_NAME = 'finanthropist-v16-tj-onboarding';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',

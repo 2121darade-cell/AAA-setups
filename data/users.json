@@ -1,0 +1,28 @@
+[
+  {
+    "id": "usr_admin_master",
+    "name": "Finanthropist Admin",
+    "email": "admin@finanthropist.com",
+    "phone": "9999999999",
+    "password": "Admin@Fin2026",
+    "tradejiniClientId": "TR2488",
+    "role": "ADMIN",
+    "status": "APPROVED",
+    "date": "19/10/2026, 10:00 AM",
+    "vipKey": "FINVIP2026",
+    "createdAt": 1729312800000
+  },
+  {
+    "id": "usr_demo_1",
+    "name": "Demo Trader",
+    "email": "demo@finanthropist.com",
+    "phone": "9876543210",
+    "password": "demo123",
+    "tradejiniClientId": "TR1001",
+    "role": "USER",
+    "status": "APPROVED",
+    "date": "19/10/2026, 11:30 AM",
+    "vipKey": "VIP-3210-777",
+    "createdAt": 1729318200000
+  }
+]

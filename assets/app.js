@@ -222,9 +222,12 @@ const AuthEngine = {
 
     // 2. Initial state verification
     const user = getCurrentUser();
+    const btnLogin = document.getElementById('btnHeaderLogin');
     if (!user) {
-      this.showAuthModal();
+      if (btnLogin) btnLogin.style.display = 'inline-flex';
+      this.showAuthModal('login');
     } else if (user.status === 'PENDING') {
+      if (btnLogin) btnLogin.style.display = 'inline-flex';
       this.showPendingModal(user);
     } else if (user.status === 'APPROVED') {
       this.grantAccess(user);
@@ -265,9 +268,29 @@ const AuthEngine = {
     }
   },
 
-  showAuthModal() {
+  showAuthModal(tab = 'login') {
     const modal = document.getElementById('authModal');
     if (modal) modal.classList.add('active');
+    const tabLogin = document.getElementById('tabBtnLogin');
+    const tabRegister = document.getElementById('tabBtnRegister');
+    const panelLogin = document.getElementById('panelLogin');
+    const panelRegister = document.getElementById('panelRegister');
+
+    if (tab === 'login') {
+      if (tabLogin) tabLogin.classList.add('active');
+      if (tabRegister) tabRegister.classList.remove('active');
+      if (panelLogin) panelLogin.style.display = 'block';
+      if (panelRegister) panelRegister.style.display = 'none';
+      const inp = document.getElementById('authInputLoginId');
+      if (inp) setTimeout(() => inp.focus(), 80);
+    } else {
+      if (tabRegister) tabRegister.classList.add('active');
+      if (tabLogin) tabLogin.classList.remove('active');
+      if (panelLogin) panelLogin.style.display = 'none';
+      if (panelRegister) panelRegister.style.display = 'block';
+      const inp = document.getElementById('authInputName');
+      if (inp) setTimeout(() => inp.focus(), 80);
+    }
   },
 
   hideAuthModal() {
@@ -281,23 +304,57 @@ const AuthEngine = {
     if (!modal) return;
     const nameEl = document.getElementById('pendingName');
     const phoneEl = document.getElementById('pendingPhone');
-    if (nameEl) nameEl.textContent = user.name || 'Student';
+    const tjEl = document.getElementById('pendingTjId');
+    if (nameEl) nameEl.textContent = user.name || 'Member';
     if (phoneEl) phoneEl.textContent = user.phone || '--';
+    if (tjEl) tjEl.textContent = user.tradejiniClientId || user.tjId || '--';
     modal.classList.add('active');
 
-    // Auto-poll approval status every 2.5 seconds
+    // Lock terminal view
+    const vw = document.getElementById('viewsWrapper') || document.querySelector('.views-wrapper');
+    if (vw) {
+      vw.style.filter = 'blur(10px)';
+      vw.style.pointerEvents = 'none';
+    }
+
+    // Auto-poll approval status every 3 seconds from server
     if (!this.checkInterval) {
-      this.checkInterval = setInterval(() => {
-        const db = getUsersDB();
-        const found = db.find(u => (u.phone && u.phone === user.phone) || (u.email && u.email === user.email));
-        if (found && found.status === 'APPROVED') {
-          clearInterval(this.checkInterval);
-          this.checkInterval = null;
-          setCurrentUser(found);
-          modal.classList.remove('active');
-          this.grantAccess(found);
+      this.checkInterval = setInterval(async () => {
+        try {
+          const curr = getCurrentUser();
+          if (!curr) return;
+          const tjParam = curr.tradejiniClientId || '';
+          const res = await fetch(`./api/auth/status?id=${encodeURIComponent(curr.id || '')}&phone=${encodeURIComponent(curr.phone || '')}&tjId=${encodeURIComponent(tjParam)}`);
+          if (res.ok) {
+            const data = await res.json();
+            if (data && data.status === 'APPROVED' && data.user) {
+              clearInterval(this.checkInterval);
+              this.checkInterval = null;
+              setCurrentUser(data.user);
+              modal.classList.remove('active');
+              this.grantAccess(data.user);
+              const isEn = window.I18N && window.I18N.getLang() === 'en';
+              showToastNotification(
+                isEn 
+                  ? '🎉 Your Tradejini account has been approved by admin! Welcome to AAA Setup.' 
+                  : '🎉 तुमचे Tradejini खाते ॲडमिनद्वारे मंजूर झाले आहे! पोर्टल सुरु झाले.', 
+                'success'
+              );
+            }
+          }
+        } catch (e) {
+          // Local storage fallback check
+          const db = getUsersDB();
+          const found = db.find(u => (u.phone && u.phone === user.phone) || (u.email && u.email === user.email));
+          if (found && found.status === 'APPROVED') {
+            clearInterval(this.checkInterval);
+            this.checkInterval = null;
+            setCurrentUser(found);
+            modal.classList.remove('active');
+            this.grantAccess(found);
+          }
         }
-      }, 2500);
+      }, 3000);
     }
   },
 
@@ -314,31 +371,224 @@ const AuthEngine = {
     this.hideAuthModal();
     this.hidePendingModal();
 
+    // Unlock terminal view
+    const vw = document.getElementById('viewsWrapper') || document.querySelector('.views-wrapper');
+    if (vw) {
+      vw.style.filter = 'none';
+      vw.style.pointerEvents = 'auto';
+    }
+
+    const btnLogin = document.getElementById('btnHeaderLogin');
+    if (btnLogin) btnLogin.style.display = 'none';
+
+    const closeBtn = document.getElementById('btnCloseAuthModal');
+    if (closeBtn) closeBtn.style.display = 'block';
+
     const badge = document.getElementById('userBadgeChip');
     const nameEl = document.getElementById('userBadgeName');
+    const profName = document.getElementById('userProfileName');
+    const profSub = document.getElementById('userProfileSub');
+    const profStatus = document.getElementById('userProfileStatus');
+
     if (badge && nameEl) {
-      badge.style.display = 'flex';
+      badge.style.display = 'inline-flex';
       nameEl.textContent = user.name ? user.name.split(' ')[0] : 'User';
+    }
+    if (profName) profName.textContent = user.name || 'Member';
+    if (profSub) {
+      const tjPart = user.tradejiniClientId ? `TJ: ${user.tradejiniClientId}` : '';
+      const phPart = user.phone ? `📱 ${user.phone}` : '';
+      profSub.textContent = [tjPart, phPart].filter(Boolean).join(' • ') || user.email || '';
+    }
+    if (profStatus) {
+      const isEn = window.I18N && window.I18N.getLang() === 'en';
+      profStatus.textContent = isEn ? '🟢 Approved Access' : '🟢 अधिकृत ॲक्सेस (Approved)';
     }
   },
 
-  async handleRegistration(name, phone, email) {
-    if (!name || name.trim().length < 2) {
-      showToastNotification("कृपया आपले पूर्ण नाव प्रविष्ट करा.", "error");
-      return;
+  logout() {
+    setCurrentUser(null);
+    if (this.checkInterval) {
+      clearInterval(this.checkInterval);
+      this.checkInterval = null;
     }
-    const cleanPhone = phone.replace(/\D/g, '');
-    if (cleanPhone.length !== 10) {
-      showToastNotification("कृपया वैध १० अंकी मोबाईल नंबर प्रविष्ट करा.", "error");
-      return;
+
+    // Lock terminal view
+    const vw = document.getElementById('viewsWrapper') || document.querySelector('.views-wrapper');
+    if (vw) {
+      vw.style.filter = 'blur(10px)';
+      vw.style.pointerEvents = 'none';
     }
-    if (!email || !email.includes('@')) {
-      showToastNotification("कृपया वैध ईमेल आयडी प्रविष्ट करा.", "error");
+
+    const badge = document.getElementById('userBadgeChip');
+    const menu = document.getElementById('userProfileMenu');
+    const btnLogin = document.getElementById('btnHeaderLogin');
+    const closeBtn = document.getElementById('btnCloseAuthModal');
+
+    if (badge) badge.style.display = 'none';
+    if (menu) menu.style.display = 'none';
+    if (btnLogin) btnLogin.style.display = 'inline-flex';
+    if (closeBtn) closeBtn.style.display = 'none';
+
+    const isEn = window.I18N && window.I18N.getLang() === 'en';
+    showToastNotification(isEn ? 'Logged out successfully!' : 'यशस्वीरित्या लॉग आऊट झाले!', 'info');
+    this.showAuthModal('login');
+  },
+
+  async handleQuickLogin(loginId, password) {
+    if (!loginId || loginId.trim().length === 0) {
+      const isEn = window.I18N && window.I18N.getLang() === 'en';
+      showToastNotification(isEn ? 'Please enter your Tradejini Client ID or Mobile Number.' : 'कृपया Tradejini Client ID किंवा मोबाईल नंबर टाका.', 'error');
       return;
     }
 
+    const clean = loginId.trim();
+    const isVipMaster = clean.toUpperCase() === "FINVIP2026" || clean.toUpperCase() === "ADMIN@FIN2026" || clean.toUpperCase() === "VIP-FIN-ALL";
+    if (isVipMaster) {
+      this.handleVipUnlock(clean);
+      return;
+    }
+
+    // Attempt Server Login API
+    try {
+      const res = await fetch('./api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier: clean, password: password || '' })
+      });
+      const data = await res.json();
+
+      if (res.ok && data.s === 'ok' && data.user) {
+        setCurrentUser(data.user);
+        this.grantAccess(data.user);
+        const isEn = window.I18N && window.I18N.getLang() === 'en';
+        showToastNotification(isEn ? `Welcome back, ${data.user.name}!` : `स्वागत आहे, ${data.user.name}! लॉगिन यशस्वी.`, 'success');
+        return;
+      } else if (data.s === 'pending' && data.user) {
+        setCurrentUser(data.user);
+        this.showPendingModal(data.user);
+        return;
+      } else if (data.message) {
+        showToastNotification(data.message, 'error');
+        return;
+      }
+    } catch (e) {
+      console.warn("Server login offline, falling back to local database:", e);
+    }
+
+    // Local Database Fallback
+    const cleanPhone = clean.replace(/\D/g, '');
     const db = getUsersDB();
-    let existing = db.find(u => u.phone === cleanPhone || u.email.toLowerCase() === email.toLowerCase());
+
+    let found = db.find(u => 
+      (u.tradejiniClientId && u.tradejiniClientId.toUpperCase() === clean.toUpperCase()) ||
+      (cleanPhone.length === 10 && u.phone === cleanPhone) ||
+      (u.vipKey && u.vipKey.toUpperCase() === clean.toUpperCase()) ||
+      (u.email && u.email.toLowerCase() === clean.toLowerCase())
+    );
+
+    if (found) {
+      if (password && found.password && found.password !== password.trim()) {
+        const isEn = window.I18N && window.I18N.getLang() === 'en';
+        showToastNotification(isEn ? 'Invalid password. Please check your credentials.' : 'अवैध पासवर्ड! कृपया योग्य पासवर्ड प्रविष्ट करा.', 'error');
+        return;
+      }
+      if (found.status === 'APPROVED') {
+        setCurrentUser(found);
+        this.grantAccess(found);
+        const isEn = window.I18N && window.I18N.getLang() === 'en';
+        showToastNotification(isEn ? `Welcome back, ${found.name}!` : `स्वागत आहे, ${found.name}! लॉगिन यशस्वी.`, 'success');
+      } else {
+        setCurrentUser(found);
+        this.showPendingModal(found);
+      }
+      return;
+    }
+
+    const isEn = window.I18N && window.I18N.getLang() === 'en';
+    showToastNotification(
+      isEn 
+        ? 'Account not found. Please switch to "Tradejini Onboarding" tab to register.' 
+        : 'हे खाते सापडले नाही. कृपया "Tradejini नवीन नोंदणी" टॅबमधून माहिती भरा.', 
+      'error'
+    );
+  },
+
+  async handleRegistration(name, email, phone, password, tradejiniClientId) {
+    const isEn = window.I18N && window.I18N.getLang() === 'en';
+
+    if (!name || name.trim().length < 2) {
+      showToastNotification(isEn ? "Please enter your full name." : "कृपया आपले पूर्ण नाव प्रविष्ट करा.", "error");
+      return;
+    }
+    if (!email || !email.includes('@')) {
+      showToastNotification(isEn ? "Please enter a valid email address." : "कृपया वैध ईमेल आयडी प्रविष्ट करा.", "error");
+      return;
+    }
+    const cleanPhone = (phone || '').replace(/\D/g, '');
+    if (cleanPhone.length !== 10) {
+      showToastNotification(isEn ? "Please enter a valid 10-digit mobile number." : "कृपया वैध १० अंकी मोबाईल नंबर प्रविष्ट करा.", "error");
+      return;
+    }
+    if (!password || password.trim().length < 4) {
+      showToastNotification(isEn ? "Please create a password (min 4 characters)." : "कृपया किमान ४ अक्षरी पासवर्ड तयार करा.", "error");
+      return;
+    }
+    const cleanTj = (tradejiniClientId || '').trim().toUpperCase();
+    if (!cleanTj || cleanTj.length < 2) {
+      showToastNotification(
+        isEn 
+          ? "Please enter your Tradejini Client ID. If you don't have one, please contact our help desk below." 
+          : "कृपया तुमचा Tradejini क्लायंट आयडी प्रविष्ट करा. नसल्यास खालील क्रमांकांवर संपर्क साधा.", 
+        "error"
+      );
+      return;
+    }
+
+    // Call Server Registration API
+    try {
+      const res = await fetch('./api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: name.trim(),
+          email: email.trim().toLowerCase(),
+          phone: cleanPhone,
+          password: password.trim(),
+          tradejiniClientId: cleanTj
+        })
+      });
+      const data = await res.json();
+
+      if (data.s === 'ok' || data.s === 'pending') {
+        setCurrentUser(data.user);
+        this.showPendingModal(data.user);
+        showToastNotification(
+          isEn 
+            ? "Registration submitted successfully! Awaiting admin approval." 
+            : "नोंदणी यशस्वी! ॲडमिन मंजुरीसाठी पाठवले आहे.", 
+          "success"
+        );
+        return;
+      } else if (data.s === 'approved') {
+        setCurrentUser(data.user);
+        this.grantAccess(data.user);
+        showToastNotification(
+          isEn ? `Welcome back, ${data.user.name}! Your account is approved.` : `स्वागत आहे, ${data.user.name}! तुमचे ॲक्सेस मंजूर आहे.`,
+          "success"
+        );
+        return;
+      } else if (data.message) {
+        showToastNotification(data.message, "error");
+        return;
+      }
+    } catch (e) {
+      console.warn("Server register offline, fallback to local storage:", e);
+    }
+
+    // Local Storage Fallback
+    const db = getUsersDB();
+    let existing = db.find(u => u.phone === cleanPhone || u.email.toLowerCase() === email.toLowerCase() || (u.tradejiniClientId && u.tradejiniClientId.toUpperCase() === cleanTj));
 
     if (existing) {
       if (existing.status === 'APPROVED') {
@@ -347,19 +597,23 @@ const AuthEngine = {
         showToastNotification(`स्वागत आहे, ${existing.name}! तुमचे ॲक्सेस मंजूर आहे.`, "success");
         return;
       } else {
+        existing.password = password.trim();
+        existing.tradejiniClientId = cleanTj;
+        saveUsersDB(db);
         setCurrentUser(existing);
         this.showPendingModal(existing);
         return;
       }
     }
 
-    // New Registration Request
     const vipKey = `VIP-${cleanPhone.slice(-4)}-${Math.floor(Math.random() * 899 + 100)}`;
     const newUser = {
       id: `usr_${Date.now()}`,
       name: name.trim(),
       phone: cleanPhone,
       email: email.trim().toLowerCase(),
+      password: password.trim(),
+      tradejiniClientId: cleanTj,
       status: 'PENDING',
       date: new Date().toLocaleDateString('en-IN') + ' ' + new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
       vipKey: vipKey
@@ -385,6 +639,7 @@ const AuthEngine = {
         name: "VIP Member",
         phone: "9822000000",
         email: "vip@finanthropist.com",
+        tradejiniClientId: "TR2488",
         status: "APPROVED"
       };
       user.status = 'APPROVED';
@@ -426,7 +681,7 @@ const AuthEngine = {
   },
 
   verifyAdminPin(pin) {
-    if (pin === ADMIN_MASTER_PIN || pin === "admin123" || pin === "Admin@Fin777") {
+    if (pin === ADMIN_MASTER_PIN || pin === "admin123" || pin === "Admin@Fin777" || pin === "Admin@Fin2026") {
       this.isAdminLoggedIn = true;
       const gate = document.getElementById('adminAuthGate');
       const dash = document.getElementById('adminDashboardView');
@@ -439,8 +694,21 @@ const AuthEngine = {
     }
   },
 
-  renderAdminDashboard() {
-    const db = getUsersDB();
+  async renderAdminDashboard() {
+    let db = getUsersDB();
+
+    // Fetch latest users from Server API
+    try {
+      const res = await fetch('./api/admin/users?pin=Admin@Fin2026');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.s === 'ok' && Array.isArray(data.users)) {
+          db = data.users;
+          saveUsersDB(db);
+        }
+      }
+    } catch (e) {}
+
     const tot = db.length;
     const app = db.filter(u => u.status === 'APPROVED').length;
     const pend = db.filter(u => u.status === 'PENDING').length;
@@ -466,51 +734,75 @@ const AuthEngine = {
         ? '<span style="background:#ecfdf5; color:#065f46; font-weight:800; padding:2px 8px; border-radius:4px; font-size:11px;">🟢 Approved</span>'
         : '<span style="background:#fffbeb; color:#b45309; font-weight:800; padding:2px 8px; border-radius:4px; font-size:11px;">🟡 Pending</span>';
 
+      const tjBadge = `<span class="badge-tj-id">${u.tradejiniClientId || '--'}</span>`;
+
       return `
         <tr>
-          <td><strong>${u.name}</strong></td>
+          <td><strong>${u.name}</strong><br><small style="color:#64748b;">${u.email || ''}</small></td>
           <td>${u.phone}</td>
-          <td>${u.email}</td>
+          <td>${tjBadge}</td>
           <td>${u.date || '--'}</td>
           <td>${statusPill}</td>
           <td style="display:flex; gap:6px; flex-wrap:wrap;">
-            ${!isApp ? `<button class="btn-admin-approve" onclick="AuthEngine.approveUser('${u.id}')">✅ मंजूर करा</button>` : ''}
-            <button class="btn-admin-vip" onclick="AuthEngine.copyVipKey('${u.vipKey}', '${u.name}')" title="WhatsApp वर पाठवण्यासाठी कोड कॉपी करा">🔑 VIP Key</button>
-            <button class="btn-admin-del" onclick="AuthEngine.deleteUser('${u.id}')">🗑️ हटवा</button>
+            ${!isApp ? `<button class="btn-admin-approve" onclick="AuthEngine.approveUser('${u.id}', '${u.phone}')">✅ मंजूर करा</button>` : ''}
+            <button class="btn-admin-vip" onclick="AuthEngine.copyVipKey('${u.vipKey}', '${u.name}')" title="VIP कोड कॉपी करा">🔑 VIP Key</button>
+            <button class="btn-admin-del" onclick="AuthEngine.deleteUser('${u.id}', '${u.phone}')">🗑️</button>
           </td>
         </tr>
       `;
     }).join('');
   },
 
-  async approveUser(userId) {
+  async approveUser(userId, phone) {
+    try {
+      const res = await fetch('./api/admin/approve-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ adminPin: 'Admin@Fin2026', userId, phone })
+      });
+      const data = await res.json();
+      if (res.ok && data.s === 'ok') {
+        showToastNotification(data.message || 'युझर मंजूर झाला आहे!', 'success');
+      }
+    } catch (e) {}
+
     const db = getUsersDB();
-    const target = db.find(u => u.id === userId);
+    const target = db.find(u => u.id === userId || (phone && u.phone === phone));
     if (target) {
       target.status = 'APPROVED';
       saveUsersDB(db);
-      this.renderAdminDashboard();
 
       const curr = getCurrentUser();
-      if (curr && curr.id === userId) {
+      if (curr && (curr.id === userId || (phone && curr.phone === phone))) {
         curr.status = 'APPROVED';
         setCurrentUser(curr);
         this.grantAccess(curr);
       }
 
-      // Publish Realtime Approval Event
       await postCloudEvent({ action: "USER_APPROVE", phone: target.phone, id: target.id });
       await postCloudEvent({ action: "SYNC_ALL", users: db });
-      showToastNotification(`युझर ${target.name} ला कायमस्वरूपी मंजुरी (Approval) दिली आहे!`, "success");
     }
+
+    this.renderAdminDashboard();
   },
 
-  async deleteUser(userId) {
+  async deleteUser(userId, phone) {
+    if (!confirm('तुम्हाला नक्की या युझरला काढून टाकायचे आहे का?')) return;
+
+    try {
+      await fetch('./api/admin/delete-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ adminPin: 'Admin@Fin2026', userId, phone })
+      });
+    } catch (e) {}
+
     let db = getUsersDB();
-    const target = db.find(u => u.id === userId);
-    db = db.filter(u => u.id !== userId);
+    const target = db.find(u => u.id === userId || (phone && u.phone === phone));
+    db = db.filter(u => !(u.id === userId || (phone && u.phone === phone)));
     saveUsersDB(db);
     this.renderAdminDashboard();
+
     if (target) {
       await postCloudEvent({ action: "USER_DELETE", userId: userId, phone: target.phone });
     }
@@ -531,56 +823,113 @@ const AuthEngine = {
     }
   },
 
-  async manualAddUser(name, phone, email) {
-    if (!name || !phone) {
-      showToastNotification("कृपया नाव आणि फोन नंबर टाका.", "error");
-      return;
-    }
-    const db = getUsersDB();
-    const cleanPhone = phone.replace(/\D/g, '');
-    const vipKey = `VIP-${cleanPhone.slice(-4)}-${Math.floor(Math.random() * 899 + 100)}`;
-    const user = {
-      id: `usr_man_${Date.now()}`,
-      name: name.trim(),
-      phone: cleanPhone,
-      email: (email || `${cleanPhone}@finanthropist.com`).trim(),
-      status: 'APPROVED',
-      date: new Date().toLocaleDateString('en-IN') + ' ' + new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
-      vipKey: vipKey
-    };
-    db.unshift(user);
-    saveUsersDB(db);
-    this.renderAdminDashboard();
-    await postCloudEvent({ action: "USER_REGISTER", user: user });
-    await postCloudEvent({ action: "SYNC_ALL", users: db });
-    showToastNotification(`युझर ${name} मंजूर करून जोडला आहे!`, "success");
-  },
-
   bindEvents() {
-    const btnSubmitAuth = document.getElementById('btnSubmitAuth');
-    if (btnSubmitAuth) {
-      btnSubmitAuth.addEventListener('click', () => {
-        const name = document.getElementById('authInputName').value;
-        const phone = document.getElementById('authInputPhone').value;
-        const email = document.getElementById('authInputEmail').value;
-        this.handleRegistration(name, phone, email);
-      });
-    }
+    // 1. Dual Tab Switching (Login vs Tradejini Onboarding)
+    const tabLogin = document.getElementById('tabBtnLogin');
+    const tabRegister = document.getElementById('tabBtnRegister');
+    if (tabLogin) tabLogin.addEventListener('click', () => this.showAuthModal('login'));
+    if (tabRegister) tabRegister.addEventListener('click', () => this.showAuthModal('register'));
 
-    ['authInputName', 'authInputPhone', 'authInputEmail'].forEach(id => {
+    // Switch links
+    const linkReg = document.getElementById('linkSwitchToRegister');
+    if (linkReg) linkReg.addEventListener('click', () => this.showAuthModal('register'));
+    const linkLog = document.getElementById('linkSwitchToLogin');
+    if (linkLog) linkLog.addEventListener('click', () => this.showAuthModal('login'));
+
+    // 2. Submit Quick Login
+    const btnSubmitQuickLogin = document.getElementById('btnSubmitQuickLogin');
+    const submitLoginAction = () => {
+      const loginId = document.getElementById('authInputLoginId').value;
+      const pass = document.getElementById('authInputLoginPassword')?.value || '';
+      this.handleQuickLogin(loginId, pass);
+    };
+    if (btnSubmitQuickLogin) {
+      btnSubmitQuickLogin.addEventListener('click', submitLoginAction);
+    }
+    ['authInputLoginId', 'authInputLoginPassword'].forEach(id => {
       const el = document.getElementById(id);
       if (el) {
         el.addEventListener('keydown', (e) => {
-          if (e.key === 'Enter') {
-            const name = document.getElementById('authInputName').value;
-            const phone = document.getElementById('authInputPhone').value;
-            const email = document.getElementById('authInputEmail').value;
-            this.handleRegistration(name, phone, email);
-          }
+          if (e.key === 'Enter') submitLoginAction();
         });
       }
     });
 
+    // 3. Submit Registration (Tradejini Onboarding)
+    const btnSubmitAuth = document.getElementById('btnSubmitAuth');
+    const submitRegisterAction = () => {
+      const name = document.getElementById('authInputName').value;
+      const email = document.getElementById('authInputEmail').value;
+      const phone = document.getElementById('authInputPhone').value;
+      const pass = document.getElementById('authInputPassword').value;
+      const tjId = document.getElementById('authInputTjClientId').value;
+      this.handleRegistration(name, email, phone, pass, tjId);
+    };
+    if (btnSubmitAuth) {
+      btnSubmitAuth.addEventListener('click', submitRegisterAction);
+    }
+
+    // Pressing Enter on Tradejini Client ID field automatically triggers submission!
+    ['authInputName', 'authInputEmail', 'authInputPhone', 'authInputPassword', 'authInputTjClientId'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) {
+        el.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') submitRegisterAction();
+        });
+      }
+    });
+
+    // 4. Pending Modal Switch Account Button
+    const btnPendingSwitch = document.getElementById('btnPendingSwitchAccount');
+    if (btnPendingSwitch) {
+      btnPendingSwitch.addEventListener('click', () => {
+        this.logout();
+      });
+    }
+
+    // 5. Header Login Button & Profile Toggle
+    const btnHeaderLogin = document.getElementById('btnHeaderLogin');
+    if (btnHeaderLogin) {
+      btnHeaderLogin.addEventListener('click', () => {
+        this.showAuthModal('login');
+      });
+    }
+
+    const badgeChip = document.getElementById('userBadgeChip');
+    const profileMenu = document.getElementById('userProfileMenu');
+    if (badgeChip && profileMenu) {
+      badgeChip.addEventListener('click', (e) => {
+        e.stopPropagation();
+        profileMenu.style.display = profileMenu.style.display === 'block' ? 'none' : 'block';
+      });
+      document.addEventListener('click', (e) => {
+        if (!profileMenu.contains(e.target) && !badgeChip.contains(e.target)) {
+          profileMenu.style.display = 'none';
+        }
+      });
+    }
+
+    const btnLogoutUser = document.getElementById('btnLogoutUser');
+    if (btnLogoutUser) {
+      btnLogoutUser.addEventListener('click', () => {
+        this.logout();
+      });
+    }
+
+    const btnCloseAuthModal = document.getElementById('btnCloseAuthModal');
+    if (btnCloseAuthModal) {
+      btnCloseAuthModal.addEventListener('click', () => {
+        const curr = getCurrentUser();
+        if (curr && curr.status === 'APPROVED') {
+          this.hideAuthModal();
+        } else {
+          const isEn = window.I18N && window.I18N.getLang() === 'en';
+          showToastNotification(isEn ? 'Please log in to access the terminal.' : 'टर्मिनल वापरण्यासाठी कृपया आधी लॉग इन करा.', 'error');
+        }
+      });
+    }
+
+    // 6. VIP Code Unlock
     const linkHaveVipCode = document.getElementById('linkHaveVipCode');
     if (linkHaveVipCode) {
       linkHaveVipCode.addEventListener('click', () => {
@@ -589,18 +938,19 @@ const AuthEngine = {
       });
     }
 
-    const linkAdminLogin = document.getElementById('linkAdminLogin');
-    if (linkAdminLogin) {
-      linkAdminLogin.addEventListener('click', () => {
-        this.openAdminModal();
-      });
-    }
-
     const btnApplyVip = document.getElementById('btnApplyVipCode');
     if (btnApplyVip) {
       btnApplyVip.addEventListener('click', () => {
         const code = document.getElementById('inputVipCode').value;
         this.handleVipUnlock(code);
+      });
+    }
+
+    // 7. Admin In-App Modal
+    const linkAdminLogin = document.getElementById('linkAdminLogin');
+    if (linkAdminLogin) {
+      linkAdminLogin.addEventListener('click', () => {
+        this.openAdminModal();
       });
     }
 
@@ -639,21 +989,9 @@ const AuthEngine = {
       btnRefreshCloud.addEventListener('click', async () => {
         btnRefreshCloud.textContent = "⏳ Syncing...";
         await syncUsersWithCloud();
+        await this.renderAdminDashboard();
         btnRefreshCloud.textContent = "🔄 रिफ्रेश (Sync Now)";
         showToastNotification("क्लाउड डेटा यशस्वीरित्या सिंक झाला!", "success");
-      });
-    }
-
-    const btnManualAdd = document.getElementById('btnAdminManualAdd');
-    if (btnManualAdd) {
-      btnManualAdd.addEventListener('click', () => {
-        const n = document.getElementById('adminAddName').value;
-        const p = document.getElementById('adminAddPhone').value;
-        const e = document.getElementById('adminAddEmail').value;
-        this.manualAddUser(n, p, e);
-        document.getElementById('adminAddName').value = '';
-        document.getElementById('adminAddPhone').value = '';
-        document.getElementById('adminAddEmail').value = '';
       });
     }
 

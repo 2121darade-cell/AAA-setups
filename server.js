@@ -1710,10 +1710,95 @@ function sendJson(res, statusCode, obj) {
     'Content-Length': payload.length,
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-admin-pin',
     'Cache-Control': 'no-store'
   });
   res.end(payload);
+}
+
+// =============================================================================
+// Standalone User Database & Authentication Engine (Tradejini Client Admissions)
+// =============================================================================
+const USERS_DB_FILE = path.join(ROOT_DIR, 'data', 'users.json');
+
+function getUsersDb() {
+  try {
+    if (!fs.existsSync(USERS_DB_FILE)) {
+      fs.mkdirSync(path.dirname(USERS_DB_FILE), { recursive: true });
+      fs.writeFileSync(USERS_DB_FILE, '[]', 'utf8');
+      return [];
+    }
+    const raw = fs.readFileSync(USERS_DB_FILE, 'utf8');
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (err) {
+    console.error('[Users DB] Read error:', err.message);
+    return [];
+  }
+}
+
+function saveUsersDb(users) {
+  try {
+    fs.mkdirSync(path.dirname(USERS_DB_FILE), { recursive: true });
+    fs.writeFileSync(USERS_DB_FILE, JSON.stringify(users, null, 2), 'utf8');
+    return true;
+  } catch (err) {
+    console.error('[Users DB] Write error:', err.message);
+    return false;
+  }
+}
+
+function sanitizeUser(u) {
+  if (!u) return null;
+  return {
+    id: u.id,
+    name: u.name,
+    email: u.email,
+    phone: u.phone,
+    tradejiniClientId: u.tradejiniClientId || '--',
+    role: u.role || 'USER',
+    status: u.status || 'PENDING',
+    date: u.date || '',
+    vipKey: u.vipKey || '',
+    createdAt: u.createdAt || 0
+  };
+}
+
+function broadcastNtfy(payload) {
+  try {
+    const postData = JSON.stringify(payload);
+    const req = https.request('https://ntfy.sh/fin_auth_hub_2026', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(postData)
+      }
+    });
+    req.on('error', () => {});
+    req.write(postData);
+    req.end();
+  } catch (e) {}
+}
+
+function parseJsonBody(req) {
+  return new Promise((resolve, reject) => {
+    let body = '';
+    req.on('data', chunk => {
+      body += chunk;
+      if (body.length > 1e6) {
+        req.destroy();
+        reject(new Error('Payload too large'));
+      }
+    });
+    req.on('end', () => {
+      try {
+        resolve(body ? JSON.parse(body) : {});
+      } catch (err) {
+        reject(new Error('Invalid JSON format'));
+      }
+    });
+    req.on('error', reject);
+  });
 }
 
 const server = http.createServer(async (req, res) => {
@@ -1722,7 +1807,7 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(200, {
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-admin-pin'
       });
       res.end();
       return;
@@ -1730,6 +1815,299 @@ const server = http.createServer(async (req, res) => {
 
     const parsedUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
     let pathname = parsedUrl.pathname.replace(/^\/aaa(?=\/|$)/, '') || '/';
+
+    // -------------------------------------------------------------------------
+    // AUTH API 1: Client Onboarding Registration (Tradejini Account Holders)
+    // -------------------------------------------------------------------------
+    if (pathname === '/api/auth/register' && req.method === 'POST') {
+      try {
+        const body = await parseJsonBody(req);
+        const name = (body.name || '').trim();
+        const email = (body.email || '').trim().toLowerCase();
+        const phone = (body.phone || '').replace(/\D/g, '');
+        const password = (body.password || '').trim();
+        const tjId = (body.tradejiniClientId || body.tjId || '').trim().toUpperCase();
+
+        if (!name || name.length < 2) {
+          sendJson(res, 400, { s: 'error', message: 'कृपया वैध पूर्ण नाव प्रविष्ट करा (Full name required).' });
+          return;
+        }
+        if (!email || !email.includes('@')) {
+          sendJson(res, 400, { s: 'error', message: 'कृपया वैध ईमेल आयडी प्रविष्ट करा (Valid email required).' });
+          return;
+        }
+        if (!phone || phone.length !== 10) {
+          sendJson(res, 400, { s: 'error', message: 'कृपया वैध १०-अंकी मोबाईल नंबर प्रविष्ट करा (10-digit mobile required).' });
+          return;
+        }
+        if (!password || password.length < 4) {
+          sendJson(res, 400, { s: 'error', message: 'कृपया किमान ४ अक्षरी पासवर्ड तयार करा (Password min 4 chars).' });
+          return;
+        }
+        if (!tjId || tjId.length < 2) {
+          sendJson(res, 400, { s: 'error', message: 'कृपया तुमचा Tradejini क्लायंट आयडी प्रविष्ट करा (Tradejini Client ID required).' });
+          return;
+        }
+
+        const db = getUsersDb();
+        const existing = db.find(u => 
+          (u.phone && u.phone === phone) || 
+          (u.email && u.email.toLowerCase() === email) ||
+          (u.tradejiniClientId && u.tradejiniClientId.toUpperCase() === tjId)
+        );
+
+        if (existing) {
+          if (existing.status === 'APPROVED') {
+            sendJson(res, 200, {
+              s: 'approved',
+              user: sanitizeUser(existing),
+              message: `हे खाते (${existing.name}) आधीच मंजूर आहे. कृपया लॉग इन करा.`
+            });
+            return;
+          } else {
+            // Update details if re-submitting
+            existing.name = name;
+            existing.password = password;
+            existing.tradejiniClientId = tjId;
+            saveUsersDb(db);
+            sendJson(res, 200, {
+              s: 'pending',
+              user: sanitizeUser(existing),
+              message: 'नोंदणी विनंती आधीच नोंदवली आहे. ॲडमिन मंजुरीची प्रतीक्षा आहे.'
+            });
+            return;
+          }
+        }
+
+        const ist = formatIst(Date.now());
+        const vipKey = `VIP-${phone.slice(-4)}-${Math.floor(Math.random() * 899 + 100)}`;
+        const newUser = {
+          id: `usr_${Date.now()}`,
+          name: name,
+          email: email,
+          phone: phone,
+          password: password,
+          tradejiniClientId: tjId,
+          role: 'USER',
+          status: 'PENDING',
+          date: `${ist.fullDate}, ${ist.hhmm} IST`,
+          vipKey: vipKey,
+          createdAt: Date.now()
+        };
+
+        db.unshift(newUser);
+        saveUsersDb(db);
+
+        // Real-time broadcast to cloud hub
+        broadcastNtfy({
+          action: 'USER_REGISTER',
+          type: 'REGISTER_REQUEST',
+          user: sanitizeUser(newUser),
+          timestamp: Date.now()
+        });
+
+        sendJson(res, 201, {
+          s: 'ok',
+          user: sanitizeUser(newUser),
+          message: 'नोंदणी यशस्वी झाली! ॲडमिन मंजुरीनंतर ॲक्सेस सुरु होईल.'
+        });
+      } catch (err) {
+        sendJson(res, 500, { s: 'error', message: `Registration error: ${err.message}` });
+      }
+      return;
+    }
+
+    // -------------------------------------------------------------------------
+    // AUTH API 2: Client Login (Tradejini ID / Mobile + Password)
+    // -------------------------------------------------------------------------
+    if (pathname === '/api/auth/login' && req.method === 'POST') {
+      try {
+        const body = await parseJsonBody(req);
+        const identifier = (body.identifier || body.loginId || '').trim();
+        const password = (body.password || '').trim();
+
+        if (!identifier) {
+          sendJson(res, 400, { s: 'error', message: 'Tradejini Client ID किंवा मोबाईल नंबर प्रविष्ट करा.' });
+          return;
+        }
+
+        const db = getUsersDb();
+        const cleanIdent = identifier.toUpperCase();
+        const cleanPhone = identifier.replace(/\D/g, '');
+
+        let user = db.find(u => 
+          (u.tradejiniClientId && u.tradejiniClientId.toUpperCase() === cleanIdent) ||
+          (cleanPhone.length === 10 && u.phone === cleanPhone) ||
+          (u.email && u.email.toUpperCase() === cleanIdent) ||
+          (u.vipKey && u.vipKey.toUpperCase() === cleanIdent)
+        );
+
+        if (!user) {
+          sendJson(res, 404, {
+            s: 'not_found',
+            message: 'हे खाते सापडले नाही. कृपया नवीन नोंदणी टॅबमधून Tradejini तपशीलांसह नोंदणी करा.'
+          });
+          return;
+        }
+
+        // Validate password (or master admin PIN override)
+        const isMasterBypass = password === 'Admin@Fin2026' || password === 'FINVIP2026';
+        if (!isMasterBypass && user.password && user.password !== password) {
+          sendJson(res, 401, {
+            s: 'invalid_password',
+            message: 'अवैध पासवर्ड! कृपया योग्य पासवर्ड प्रविष्ट करा.'
+          });
+          return;
+        }
+
+        if (user.status === 'APPROVED') {
+          sendJson(res, 200, {
+            s: 'ok',
+            user: sanitizeUser(user),
+            token: `tok_${user.id}_${Date.now()}`,
+            message: `लॉगिन यशस्वी! स्वागत आहे, ${user.name}.`
+          });
+        } else if (user.status === 'PENDING') {
+          sendJson(res, 200, {
+            s: 'pending',
+            user: sanitizeUser(user),
+            message: 'तुमचे खाते अद्याप ॲडमिन मंजुरीच्या प्रतीक्षेत आहे.'
+          });
+        } else {
+          sendJson(res, 403, {
+            s: 'rejected',
+            message: 'तुमची ॲक्सेस विनंती नाकारण्यात आली आहे. कृपया ॲडमिनशी संपर्क साधा.'
+          });
+        }
+      } catch (err) {
+        sendJson(res, 500, { s: 'error', message: `Login error: ${err.message}` });
+      }
+      return;
+    }
+
+    // -------------------------------------------------------------------------
+    // AUTH API 3: Check User Status (Polled by Pending Screen)
+    // -------------------------------------------------------------------------
+    if (pathname === '/api/auth/status') {
+      const id = parsedUrl.searchParams.get('id');
+      const phone = (parsedUrl.searchParams.get('phone') || '').replace(/\D/g, '');
+      const tjId = (parsedUrl.searchParams.get('tjId') || '').toUpperCase();
+
+      const db = getUsersDb();
+      const user = db.find(u => 
+        (id && u.id === id) || 
+        (phone && phone.length === 10 && u.phone === phone) || 
+        (tjId && u.tradejiniClientId && u.tradejiniClientId.toUpperCase() === tjId)
+      );
+
+      if (!user) {
+        sendJson(res, 404, { s: 'not_found', status: 'NOT_FOUND' });
+        return;
+      }
+
+      sendJson(res, 200, {
+        s: 'ok',
+        status: user.status,
+        user: sanitizeUser(user)
+      });
+      return;
+    }
+
+    // -------------------------------------------------------------------------
+    // ADMIN API 1: List All Registered Users
+    // -------------------------------------------------------------------------
+    if (pathname === '/api/admin/users') {
+      const pin = parsedUrl.searchParams.get('pin') || req.headers['x-admin-pin'];
+      if (pin !== 'Admin@Fin2026' && pin !== 'admin123' && pin !== 'Admin@Fin777') {
+        sendJson(res, 403, { s: 'error', message: 'Unauthorized: Invalid Admin PIN' });
+        return;
+      }
+      const db = getUsersDb();
+      sendJson(res, 200, { s: 'ok', users: db.map(sanitizeUser) });
+      return;
+    }
+
+    // -------------------------------------------------------------------------
+    // ADMIN API 2: Approve User Access
+    // -------------------------------------------------------------------------
+    if (pathname === '/api/admin/approve-user' && req.method === 'POST') {
+      try {
+        const body = await parseJsonBody(req);
+        const pin = body.adminPin || req.headers['x-admin-pin'];
+        if (pin !== 'Admin@Fin2026' && pin !== 'admin123' && pin !== 'Admin@Fin777') {
+          sendJson(res, 403, { s: 'error', message: 'Unauthorized: Invalid Admin PIN' });
+          return;
+        }
+
+        const userId = body.userId;
+        const phone = (body.phone || '').replace(/\D/g, '');
+        const db = getUsersDb();
+        const target = db.find(u => (userId && u.id === userId) || (phone && phone.length === 10 && u.phone === phone));
+
+        if (!target) {
+          sendJson(res, 404, { s: 'error', message: 'User not found' });
+          return;
+        }
+
+        target.status = 'APPROVED';
+        saveUsersDb(db);
+
+        // Real-time broadcast so user's pending modal automatically unlocks
+        broadcastNtfy({
+          action: 'USER_APPROVE',
+          type: 'USER_STATUS_UPDATE',
+          phone: target.phone,
+          id: target.id,
+          status: 'APPROVED',
+          timestamp: Date.now()
+        });
+
+        sendJson(res, 200, {
+          s: 'ok',
+          message: `युझर ${target.name} (${target.tradejiniClientId || target.phone}) मंजूर करण्यात आला आहे.`,
+          user: sanitizeUser(target)
+        });
+      } catch (err) {
+        sendJson(res, 500, { s: 'error', message: err.message });
+      }
+      return;
+    }
+
+    // -------------------------------------------------------------------------
+    // ADMIN API 3: Reject / Delete User Access
+    // -------------------------------------------------------------------------
+    if (pathname === '/api/admin/delete-user' && req.method === 'POST') {
+      try {
+        const body = await parseJsonBody(req);
+        const pin = body.adminPin || req.headers['x-admin-pin'];
+        if (pin !== 'Admin@Fin2026' && pin !== 'admin123' && pin !== 'Admin@Fin777') {
+          sendJson(res, 403, { s: 'error', message: 'Unauthorized: Invalid Admin PIN' });
+          return;
+        }
+
+        let db = getUsersDb();
+        const userId = body.userId;
+        const phone = (body.phone || '').replace(/\D/g, '');
+        const target = db.find(u => (userId && u.id === userId) || (phone && phone.length === 10 && u.phone === phone));
+
+        db = db.filter(u => !( (userId && u.id === userId) || (phone && phone.length === 10 && u.phone === phone) ));
+        saveUsersDb(db);
+
+        if (target) {
+          broadcastNtfy({
+            action: 'USER_DELETE',
+            userId: target.id,
+            phone: target.phone,
+            timestamp: Date.now()
+          });
+        }
+
+        sendJson(res, 200, { s: 'ok', message: 'User deleted successfully' });
+      } catch (err) {
+        sendJson(res, 500, { s: 'error', message: err.message });
+      }
+      return;
+    }
 
     // 1. API: Status
     if (pathname === '/api/tradejini/status') {

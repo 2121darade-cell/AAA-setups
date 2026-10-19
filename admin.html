@@ -394,6 +394,7 @@
             <tr>
               <th>विद्यार्थ्याचे नाव</th>
               <th>मोबाईल नंबर</th>
+              <th>Tradejini Client ID</th>
               <th>नोंदणी वेळ</th>
               <th>स्थिती</th>
               <th style="text-align:right;">कारवाई (Action)</th>
@@ -411,7 +412,7 @@
       <div class="panel-header">
         <h2><span>👥</span> सर्व नोंदणीकृत विद्यार्थी व युजर्स (All Users)</h2>
         <div style="display:flex; gap:10px; align-items:center;">
-          <input type="text" id="adminUserSearch" placeholder="🔍 नाव किंवा मोबाईल नंबर शोधा..." style="padding:6px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:12px; width:220px;" />
+          <input type="text" id="adminUserSearch" placeholder="🔍 नाव, मोबाईल किंवा Tradejini ID शोधा..." style="padding:6px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:12px; width:240px;" />
           <button id="btnExportUsersCsv" style="background:#f1f5f9; border:1px solid #cbd5e1; padding:6px 12px; border-radius:6px; font-size:12px; font-weight:700; cursor:pointer;">
             📥 CSV एक्सपोर्ट
           </button>
@@ -424,6 +425,7 @@
             <tr>
               <th>नाव</th>
               <th>मोबाईल</th>
+              <th>Tradejini Client ID</th>
               <th>रोल</th>
               <th>नोंदणी तारीख</th>
               <th>स्थिती</th>
@@ -644,46 +646,79 @@
 
     // 3. User Actions: Approve & Reject
     window.approveUser = async function(phone) {
+      try {
+        await fetch('./api/admin/approve-user', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ adminPin: 'Admin@Fin2026', phone: phone })
+        });
+      } catch (e) {}
+
       const users = getUsers();
       const user = users.find(u => u.phone === phone);
-      if (!user) return;
-      user.status = "APPROVED";
-      saveUsers(users);
+      if (user) {
+        user.status = "APPROVED";
+        saveUsers(users);
+      }
 
       await broadcastCloudEvent({
         type: "USER_STATUS_UPDATE",
-        phone: user.phone,
+        action: "USER_APPROVE",
+        phone: phone,
         status: "APPROVED",
         timestamp: Date.now()
       });
-      alert(`✅ ${user.name} (${user.phone}) मंजूर करण्यात आला! त्याच्या मोबाईलवर पोर्टल लगेच अनलॉक होईल.`);
+      alert(`✅ युझर (${phone}) मंजूर करण्यात आला! त्याचा ॲक्सेस लगेच सुरु होईल.`);
+      renderDashboard();
     };
 
     window.rejectUser = async function(phone) {
       if (!confirm(`तुम्हाला नक्की या युजरची विनंती रद्द करायची आहे का?`)) return;
       const users = getUsers();
       const user = users.find(u => u.phone === phone);
-      if (!user) return;
-      user.status = "REJECTED";
-      saveUsers(users);
+      if (user) {
+        user.status = "REJECTED";
+        saveUsers(users);
+      }
 
       await broadcastCloudEvent({
         type: "USER_STATUS_UPDATE",
-        phone: user.phone,
+        phone: phone,
         status: "REJECTED",
         timestamp: Date.now()
       });
+      renderDashboard();
     };
 
-    window.deleteUser = function(phone) {
+    window.deleteUser = async function(phone) {
       if (!confirm(`हा युजर कायमचा काढून टाकायचा आहे का?`)) return;
+      try {
+        await fetch('./api/admin/delete-user', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ adminPin: 'Admin@Fin2026', phone: phone })
+        });
+      } catch (e) {}
+
       let users = getUsers();
       users = users.filter(u => u.phone !== phone);
       saveUsers(users);
+      renderDashboard();
     };
 
     // 4. Render Admin Dashboard
-    function renderDashboard() {
+    async function renderDashboard() {
+      // Sync from Server API
+      try {
+        const res = await fetch('./api/admin/users?pin=Admin@Fin2026');
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.s === 'ok' && Array.isArray(data.users)) {
+            saveUsers(data.users);
+          }
+        }
+      } catch (e) {}
+
       const users = getUsers();
       const searchVal = (document.getElementById('adminUserSearch')?.value || '').toLowerCase().trim();
 
@@ -699,12 +734,13 @@
       // Table 1: Pending Users
       const tbPending = document.getElementById('tablePendingBody');
       if (pendingUsers.length === 0) {
-        tbPending.innerHTML = `<tr><td colspan="5" style="text-align:center; color:#94a3b8; padding:24px;">कोणतीही प्रलंबित विनंती नाही. सर्व विनंत्या मंजूर झालेल्या आहेत!</td></tr>`;
+        tbPending.innerHTML = `<tr><td colspan="6" style="text-align:center; color:#94a3b8; padding:24px;">कोणतीही प्रलंबित विनंती नाही. सर्व विनंत्या मंजूर झालेल्या आहेत!</td></tr>`;
       } else {
         tbPending.innerHTML = pendingUsers.map(u => `
           <tr>
-            <td><strong>${u.name}</strong></td>
+            <td><strong>${u.name}</strong><br><small style="color:#64748b;">${u.email || ''}</small></td>
             <td><code style="font-family:'JetBrains Mono'; color:#2563eb;">${u.phone}</code></td>
+            <td><span style="background:#eff6ff; color:#1d4ed8; padding:3px 8px; border-radius:5px; font-weight:800; font-family:'JetBrains Mono';">${u.tradejiniClientId || '--'}</span></td>
             <td style="color:#64748b;">${u.date || '--'}</td>
             <td><span class="badge-status badge-pending">🟡 PENDING</span></td>
             <td style="text-align:right;">
@@ -719,7 +755,11 @@
       const tbAll = document.getElementById('tableAllUsersBody');
       let filtered = users;
       if (searchVal) {
-        filtered = users.filter(u => u.name.toLowerCase().includes(searchVal) || u.phone.includes(searchVal));
+        filtered = users.filter(u => 
+          (u.name && u.name.toLowerCase().includes(searchVal)) || 
+          (u.phone && u.phone.includes(searchVal)) ||
+          (u.tradejiniClientId && u.tradejiniClientId.toLowerCase().includes(searchVal))
+        );
       }
 
       tbAll.innerHTML = filtered.map(u => {
@@ -729,8 +769,9 @@
 
         return `
           <tr>
-            <td><strong>${u.name}</strong></td>
+            <td><strong>${u.name}</strong><br><small style="color:#64748b;">${u.email || ''}</small></td>
             <td><code style="font-family:'JetBrains Mono';">${u.phone}</code></td>
+            <td><span style="background:#eff6ff; color:#1d4ed8; padding:2px 7px; border-radius:4px; font-weight:800; font-family:'JetBrains Mono'; font-size:11px;">${u.tradejiniClientId || '--'}</span></td>
             <td><span style="font-size:11px; font-weight:700; color:#64748b;">${u.role || 'USER'}</span></td>
             <td style="color:#64748b;">${u.date || '--'}</td>
             <td>${badge}</td>
