@@ -1,5 +1,5 @@
 // Service Worker for Finanthropist Educare Trading Terminal
-const CACHE_NAME = 'finanthropist-v13-autologin-daily';
+const CACHE_NAME = 'finanthropist-v14-chart-scroll-fix';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',

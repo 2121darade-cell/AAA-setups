@@ -616,6 +616,19 @@ const TradeSetupModule = (function () {
     if (window.selectStock) {
       window.selectStock(symbol);
     }
+
+    // Scroll window and views-wrapper to top inside iframe
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+    const vw = document.querySelector('.views-wrapper');
+    if (vw) vw.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+
+    // Safe layout recalculation inside iframe
+    if (window.AppState && window.AppState.chart) {
+      window.AppState.chart.resize();
+      setTimeout(() => {
+        if (window.AppState && window.AppState.chart) window.AppState.chart.resize();
+      }, 150);
+    }
   }
 
   function init() {
@@ -721,13 +734,20 @@ const TradeSetupModule = (function () {
     }, 60000);
   }
 
+  function openModalSignalInMainChart() {
+    if (state.chartData && state.chartData.Symbol) {
+      openInMainChart(state.chartData.Symbol);
+    }
+  }
+
   return {
     init,
     scanStrategy,
     viewChart,
     closeChartModal,
     closeSignalModal,
-    openInMainChart
+    openInMainChart,
+    openModalSignalInMainChart
   };
 })();
 

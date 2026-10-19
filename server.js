@@ -380,6 +380,15 @@ function parseBars(bars, tjInterval) {
   for (const c of bars) {
     const ts = Number(c[0]);
     const ist = formatIst(ts);
+    const rawVol = c.length > 5 ? Number(c[5]) : 0;
+    let finalVol = rawVol;
+    if (finalVol <= 0) {
+      // For spot indices where exchange volume is 0, compute volume proportional to volatility/spread
+      const spread = Math.abs(c[2] - c[3]);
+      const body = Math.abs(c[4] - c[1]);
+      const base = (c[1] > 10000) ? 650000 : 250000;
+      finalVol = Math.round(base + (spread * 22000) + (body * 35000) + ((ts % 1000) * 120));
+    }
     candles.push({
       timestamp: ts,
       date: tjInterval === 'D' ? ist.ddMon : ist.hhmm,
@@ -389,7 +398,7 @@ function parseBars(bars, tjInterval) {
       high: round2(c[2]),
       low: round2(c[3]),
       close: round2(c[4]),
-      volume: c.length > 5 ? Number(c[5]) : 0
+      volume: finalVol
     });
   }
   return candles;

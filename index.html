@@ -13,7 +13,7 @@
   <link rel="apple-touch-icon" href="./assets/logo.png" />
   <link rel="manifest" href="./manifest.json" />
 
-  <link rel="stylesheet" href="./assets/style.css?v=20261007_5" />
+  <link rel="stylesheet" href="./assets/style.css?v=20261019_v2" />
   
   <!-- Standalone High-Speed Canvas Candlestick Engine (Apache ECharts) -->
   <script src="./assets/echarts.min.js"></script>
@@ -24,18 +24,18 @@
   </script>
 
   <!-- Core Symbol Lists (Prices overwritten on load by Live Tradejini API) -->
-  <script src="./assets/mcx_data.js?v=20261007_5"></script>
-  <script src="./assets/nifty500_data.js?v=20261007_5"></script>
+  <script src="./assets/mcx_data.js?v=20261019_v2"></script>
+  <script src="./assets/nifty500_data.js?v=20261019_v2"></script>
   <script>
     if (typeof NIFTY_500_STOCKS !== "undefined") window.NIFTY_500_STOCKS = NIFTY_500_STOCKS;
     if (typeof MCX_COMMODITIES !== "undefined") window.MCX_COMMODITIES = MCX_COMMODITIES;
   </script>
 
   <!-- Sub-Modules & Localization -->
-  <script src="./assets/cubeplus_feed.js?v=20261007_5"></script>
-  <script src="./assets/i18n.js?v=20261007_5"></script>
-  <script src="./assets/trade_setup.js?v=20261007_5"></script>
-  <script src="./assets/aaa_screener.js?v=20261007_5"></script>
+  <script src="./assets/cubeplus_feed.js?v=20261019_v2"></script>
+  <script src="./assets/i18n.js?v=20261019_v2"></script>
+  <script src="./assets/trade_setup.js?v=20261019_v2"></script>
+  <script src="./assets/aaa_screener.js?v=20261019_v2"></script>
 </head>
 <body>
 
@@ -199,25 +199,12 @@
               </div>
 
               <!-- Chart Zoom & Pan Controls -->
-              <div class="chart-zoom-group" title="चार्ट हलवा व कॅन्डल्स लहान/मोठ्या करा (Zoom & Pan)">
+              <div class="chart-zoom-group" title="चार्ट हलवा व कॅन्डल्स लहान/मोठ्या करा (Zoom & Pan)" style="margin-left:auto;">
                 <button class="chart-ctrl-btn" id="btnChartZoomIn" title="झूम इन / कॅन्डल मोठी करा (Zoom In)">🔍+</button>
                 <button class="chart-ctrl-btn" id="btnChartZoomOut" title="झूम आऊट / कॅन्डल लहान करा (Zoom Out)">🔍−</button>
                 <button class="chart-ctrl-btn" id="btnChartPanLeft" title="मागील कॅन्डल्स पहा (Pan Left)">◀</button>
                 <button class="chart-ctrl-btn" id="btnChartPanRight" title="पुढील कॅन्डल्स पहा (Pan Right)">▶</button>
                 <button class="chart-ctrl-btn" id="btnChartReset" title="मूळ स्थितीत आणा (Reset)">🔄</button>
-              </div>
-
-              <!-- Direct Broker & External Real-Time Links -->
-              <div class="broker-links-group" style="display:flex; gap:6px; margin-left:auto;">
-                <a href="https://tradinglead.in/" target="_blank" rel="noopener noreferrer" class="chart-ctrl-btn" style="text-decoration:none; background:#f5f3ff; color:#6d28d9; border-color:#ddd6fe; font-weight:700; display:flex; align-items:center; gap:4px; padding:4px 8px; font-size:11px;" title="Open TradingLead Live Chart">
-                  ⚡ TradingLead
-                </a>
-                <a href="https://cubeplus.tradejini.com/" target="_blank" rel="noopener noreferrer" class="chart-ctrl-btn" style="text-decoration:none; background:#ecfdf5; color:#065f46; border-color:#a7f3d0; font-weight:700; display:flex; align-items:center; gap:4px; padding:4px 8px; font-size:11px;" title="Tradejini CubePlus Live TradingView Chart">
-                  ⚡ Tradejini CubePlus
-                </a>
-                <a href="https://charting.nseindia.com/" target="_blank" rel="noopener noreferrer" class="chart-ctrl-btn" style="text-decoration:none; background:#eff6ff; color:#1d4ed8; border-color:#bfdbfe; font-weight:700; display:flex; align-items:center; gap:4px; padding:4px 8px; font-size:11px;" title="Official NSE Live Charting System">
-                  🌐 NSE Chart
-                </a>
               </div>
             </div>
 
@@ -594,6 +581,11 @@
         <div style="width:100%; height:380px; position:relative;">
           <canvas id="tsHaCanvas"></canvas>
         </div>
+        <div style="margin-top:12px; display:flex; justify-content:flex-end; gap:8px;">
+          <button class="ts-btn-solid" onclick="TradeSetupModule.openModalSignalInMainChart()" style="padding:7px 16px; font-size:12px;">
+            🚀 मुख्य टर्मिनलवर लोड करा
+          </button>
+        </div>
       </div>
     </div>
   </div>
@@ -661,6 +653,6 @@
   </div>
 
   <!-- Core Main Application Logic -->
-  <script src="./assets/app.js?v=20261015_autologin"></script>
+  <script src="./assets/app.js?v=20261019_v2"></script>
 </body>
 </html>

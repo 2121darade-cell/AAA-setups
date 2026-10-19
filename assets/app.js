@@ -688,9 +688,16 @@ function switchView(viewName) {
     v.classList.toggle('active', v.id === `view-${viewName}`);
   });
 
+  // Ensure scroll is at top when switching views
+  window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+  const vw = document.querySelector('.views-wrapper');
+  if (vw) vw.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+
   if (viewName === 'chart') {
     if (AppState.chart) {
-      setTimeout(() => AppState.chart.resize(), 50);
+      AppState.chart.resize();
+      setTimeout(() => AppState.chart && AppState.chart.resize(), 60);
+      setTimeout(() => AppState.chart && AppState.chart.resize(), 180);
     }
   } else if (viewName === 'trade-setup') {
     if (window.TradeSetupModule) {
@@ -1206,10 +1213,11 @@ function renderEChart(showAnimation = true) {
       splitLine: { show: true, lineStyle: { color: '#f1f5f9' } }
     },
     {
-      scale: true,
+      scale: false,
+      min: 0,
       gridIndex: 0,
       show: false,
-      max: function(v) { return Math.max(v.max * 4.5, 1000); }
+      max: function(v) { return Math.max(v.max * 4, 1000); }
     }
   ] : [
     {
@@ -1220,10 +1228,11 @@ function renderEChart(showAnimation = true) {
       splitLine: { show: true, lineStyle: { color: '#f1f5f9' } }
     },
     {
-      scale: true,
+      scale: false,
+      min: 0,
       gridIndex: 0,
       show: false,
-      max: function(v) { return Math.max(v.max * 4.5, 1000); }
+      max: function(v) { return Math.max(v.max * 4, 1000); }
     }
   ];
 
@@ -1269,10 +1278,11 @@ function renderEChart(showAnimation = true) {
   if (AppState.indicators.vol) {
     const volData = candles.map((c) => {
       const isUp = c.close >= c.open;
+      const rawVol = (typeof c.volume === 'number' && c.volume > 0) ? c.volume : 0;
       return {
-        value: c.volume || 100,
+        value: rawVol,
         itemStyle: {
-          color: isUp ? 'rgba(8, 153, 129, 0.35)' : 'rgba(242, 54, 69, 0.35)',
+          color: isUp ? 'rgba(8, 153, 129, 0.4)' : 'rgba(242, 54, 69, 0.4)',
           borderColor: isUp ? '#089981' : '#f23645',
           borderWidth: 1
         }

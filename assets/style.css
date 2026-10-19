@@ -57,7 +57,7 @@ body {
   overflow: hidden;
   height: 100vh;
   width: 100vw;
-  user-select: none;
+  user-select: auto;
 }
 
 /* Custom Scrollbars */
@@ -371,7 +371,8 @@ body {
 .views-wrapper {
   position: relative;
   height: calc(100vh - var(--header-height));
-  width: 100vw;
+  max-height: calc(100vh - var(--header-height));
+  width: 100%;
   overflow: hidden;
 }
 
@@ -803,10 +804,18 @@ body {
    ========================================================================== */
 
 #view-trade-setup {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  max-height: 100%;
   flex-direction: column;
   background: #f8fafc;
-  overflow-y: auto;
-  padding: 16px 20px;
+  overflow-y: auto !important;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+  overscroll-behavior-y: contain;
+  padding: 16px 20px 80px 20px;
   gap: 16px;
 }
 
@@ -1151,10 +1160,18 @@ body {
    ========================================================================== */
 
 #view-aaa {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  max-height: 100%;
   flex-direction: column;
   background: #f8fafc;
-  overflow-y: auto;
-  padding: 16px 20px;
+  overflow-y: auto !important;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+  overscroll-behavior-y: contain;
+  padding: 16px 20px 80px 20px;
   gap: 16px;
 }
 
@@ -1285,8 +1302,11 @@ body {
   background: #ffffff;
   border: 1px solid var(--border-subtle);
   border-radius: 10px;
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: visible;
   box-shadow: var(--shadow-sm);
+  max-width: 100%;
+  -webkit-overflow-scrolling: touch;
 }
 
 .aaa-table {
