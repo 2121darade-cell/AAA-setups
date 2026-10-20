@@ -1212,6 +1212,12 @@ function isNseMarketOpen() {
 }
 
 function isCurrentMarketOpen() {
+  if (window.REAL_TJ_MARKET_STATUS) {
+    if (AppState.currentAsset && AppState.currentAsset.exchange === "MCX") {
+      return window.REAL_TJ_MARKET_STATUS.MCX === 1;
+    }
+    return window.REAL_TJ_MARKET_STATUS.NSE === 1;
+  }
   if (AppState.currentAsset && AppState.currentAsset.exchange === "MCX") {
     return window.isMcxMarketOpen ? window.isMcxMarketOpen() : false;
   }
@@ -1306,24 +1312,123 @@ function handleCandleRollover() {
   fetchLiveCandlesFromTradejini(AppState.currentAsset, false);
 }
 
+// -----------------------------------------------------------------------------
+// Real-Time Tradejini WebSocket Stream Client (SSE Feed)
+// -----------------------------------------------------------------------------
+function initTradejiniWebSocketStream() {
+  if (window._tjStreamInitialized) return;
+  window._tjStreamInitialized = true;
+
+  try {
+    const es = new EventSource('./api/tradejini/stream');
+
+    es.onopen = () => {
+      console.log('[Tradejini Stream] Connected to live streaming tick feed');
+      const badgeText = document.getElementById('tjLoginBadgeText');
+      if (badgeText && !badgeText.textContent.includes('• Live WS')) {
+        badgeText.textContent += ' • Live WS';
+      }
+    };
+
+    es.onmessage = (evt) => {
+      try {
+        const data = JSON.parse(evt.data);
+        if (!data) return;
+
+        if (data.type === 'snapshot') {
+          if (Array.isArray(data.quotes)) {
+            data.quotes.forEach(q => {
+              if (q && q.symbol) {
+                applyQuoteToUniverse(q.symbol, q);
+              }
+            });
+            if (typeof window.renderWatchlistItems === 'function') {
+              window.renderWatchlistItems();
+            }
+          }
+          if (data.marketStatus) {
+            window.REAL_TJ_MARKET_STATUS = data.marketStatus;
+            updateMarketStatusDisplay();
+          }
+        } else if (data.type === 'tick' && data.tick) {
+          handleIncomingLiveTick(data.tick);
+        } else if (data.type === 'marketStatus' && data.status) {
+          window.REAL_TJ_MARKET_STATUS = data.status;
+          updateMarketStatusDisplay();
+        }
+      } catch (err) {}
+    };
+
+    es.onerror = () => {
+      // Browser EventSource automatically handles reconnection
+    };
+  } catch (e) {
+    console.warn('[Tradejini Stream] EventSource initialization failed:', e);
+  }
+}
+
+function handleIncomingLiveTick(tick) {
+  if (!tick || !tick.symbol) return;
+  const sym = tick.symbol.toUpperCase().trim();
+
+  // 1. Update live quote universe & watchlist
+  applyQuoteToUniverse(sym, tick);
+  if (typeof window.renderWatchlistItems === 'function') {
+    window.renderWatchlistItems();
+  }
+
+  // 2. Active Chart Asset Live Tick Update
+  const currSym = (AppState.currentAsset && AppState.currentAsset.symbol ? AppState.currentAsset.symbol : '').toUpperCase().trim();
+  const isMatch = (currSym === sym || 
+                   (currSym === 'NIFTY 50' && (sym === 'NIFTY' || sym === '-1_NSE')) ||
+                   (currSym === 'BANK NIFTY' && (sym === 'BANKNIFTY' || sym === '-20_NSE')) ||
+                   (currSym === 'FIN NIFTY' && (sym === 'FINNIFTY' || sym === '-21_NSE')) ||
+                   (currSym === 'MIDCAP NIFTY' && (sym === 'MIDCAP' || sym === '-18_NSE')) ||
+                   (currSym === 'SENSEX' && sym === '-51_BSE') ||
+                   (currSym === 'GOLD' && (sym === 'GOLDM' || sym === '495213_MCX')) ||
+                   (currSym === 'CRUDE OIL' && (sym === 'CRUDEOIL' || sym === '573422_MCX')));
+
+  if (isMatch) {
+    if (tick.price > 0) {
+      AppState.currentAsset.price = tick.price;
+      updateHeaderPrice(tick.price);
+    }
+
+    if (AppState.liveCandles && AppState.liveCandles.length > 0) {
+      const lastCandle = AppState.liveCandles[AppState.liveCandles.length - 1];
+      if (tick.price > lastCandle.high) lastCandle.high = tick.price;
+      if (tick.price < lastCandle.low && tick.price > 0) lastCandle.low = tick.price;
+      lastCandle.close = tick.price;
+      if (tick.volume) lastCandle.volume = tick.volume;
+
+      // Update OHLC display & redraw chart smoothly
+      updateOHLCDisplay(lastCandle);
+      renderEChart(false);
+    }
+  }
+}
+
 function startLivePoller() {
   if (AppState.livePollerTimer) {
     clearInterval(AppState.livePollerTimer);
   }
 
+  // Initialize real-time Tradejini WebSocket Stream via SSE
+  initTradejiniWebSocketStream();
+
   syncLiveQuotesFromTradejini();
 
-  // Poll Tradejini CubePlus live feed every 5 seconds continuously
+  // Background fallback poll every 8 seconds
   AppState.livePollerTimer = setInterval(() => {
     fetchLiveCandlesFromTradejini(AppState.currentAsset, false);
-  }, 5000);
+  }, 8000);
 
   if (AppState.quotesPollerTimer) {
     clearInterval(AppState.quotesPollerTimer);
   }
   AppState.quotesPollerTimer = setInterval(() => {
     syncLiveQuotesFromTradejini();
-  }, 10000);
+  }, 15000);
 }
 
 async function updateTradejiniBadge() {
@@ -2570,6 +2675,9 @@ function selectStock(symbol) {
       chip.classList.remove('active');
     }
   });
+
+  // Dynamically subscribe to Tradejini WebSocket live ticks
+  fetch(`./api/tradejini/subscribe?symbol=${encodeURIComponent(sym)}`).catch(() => {});
 
   // Load Real Candles with Full Day Guarantee
   loadCandlesForActiveAsset();

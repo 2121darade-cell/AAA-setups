@@ -356,6 +356,266 @@ function resolveTradejiniId(symbol) {
   return `EQT_${cleanSym}_EQ_NSE`;
 }
 
+// -----------------------------------------------------------------------------
+// TRADEJINI REAL-TIME WEBSOCKET STREAMING ENGINE (NxtradStream SDK)
+// -----------------------------------------------------------------------------
+const STREAM_TOKEN_TO_SYMBOL = new Map([
+  ['-1_NSE', 'NIFTY 50'],
+  ['-20_NSE', 'BANK NIFTY'],
+  ['-21_NSE', 'FIN NIFTY'],
+  ['-18_NSE', 'MIDCAP NIFTY'],
+  ['-51_BSE', 'SENSEX'],
+  ['-15_NSE', 'INDIA VIX'],
+  ['495213_MCX', 'GOLD'],
+  ['573422_MCX', 'CRUDE OIL'],
+  ['2885_NSE', 'RELIANCE'],
+  ['1333_NSE', 'HDFCBANK'],
+  ['11536_NSE', 'TCS'],
+  ['1594_NSE', 'INFY'],
+  ['4963_NSE', 'ICICIBANK'],
+  ['3045_NSE', 'SBIN'],
+  ['10604_NSE', 'BHARTIARTL'],
+  ['1660_NSE', 'ITC'],
+  ['1922_NSE', 'KOTAKBANK'],
+  ['11483_NSE', 'LT'],
+  ['5900_NSE', 'AXISBANK'],
+  ['1394_NSE', 'HINDUNILVR'],
+  ['317_NSE', 'BAJFINANCE'],
+  ['10999_NSE', 'MARUTI'],
+  ['236_NSE', 'ASIANPAINT'],
+  ['759782_NSE', 'TATAMOTORS'],
+  ['3499_NSE', 'TATASTEEL']
+]);
+
+const SYMBOL_TO_STREAM_TOKEN = new Map();
+for (const [tok, sym] of STREAM_TOKEN_TO_SYMBOL.entries()) {
+  SYMBOL_TO_STREAM_TOKEN.set(sym.toUpperCase(), tok);
+  const alias = sym.replace(/\s+/g, '').toUpperCase();
+  SYMBOL_TO_STREAM_TOKEN.set(alias, tok);
+}
+SYMBOL_TO_STREAM_TOKEN.set('NIFTY', '-1_NSE');
+SYMBOL_TO_STREAM_TOKEN.set('NIFTY50', '-1_NSE');
+SYMBOL_TO_STREAM_TOKEN.set('BANKNIFTY', '-20_NSE');
+SYMBOL_TO_STREAM_TOKEN.set('FINNIFTY', '-21_NSE');
+SYMBOL_TO_STREAM_TOKEN.set('MIDCAP', '-18_NSE');
+SYMBOL_TO_STREAM_TOKEN.set('MIDCPNIFTY', '-18_NSE');
+SYMBOL_TO_STREAM_TOKEN.set('CRUDEOIL', '573422_MCX');
+SYMBOL_TO_STREAM_TOKEN.set('CRUDE', '573422_MCX');
+SYMBOL_TO_STREAM_TOKEN.set('GOLDM', '495213_MCX');
+
+let tjStreamClient = null;
+let tjStreamConnected = false;
+let tjStreamReconnectTimer = null;
+let latestMarketStatus = { NSE: 0, BSE: 0, MCX: 0 };
+const sseStreamClients = new Set();
+const tjStreamActiveTokens = new Set([
+  '-1_NSE',
+  '-20_NSE',
+  '-21_NSE',
+  '-18_NSE',
+  '-51_BSE',
+  '-15_NSE',
+  '495213_MCX',
+  '573422_MCX',
+  '2885_NSE',
+  '1333_NSE',
+  '11536_NSE',
+  '1594_NSE',
+  '4963_NSE',
+  '3045_NSE',
+  '10604_NSE',
+  '1660_NSE',
+  '1922_NSE'
+]);
+
+function resolveStreamTokenFromSymbol(symbol) {
+  if (!symbol) return null;
+  const s = String(symbol).trim().toUpperCase();
+  if (SYMBOL_TO_STREAM_TOKEN.has(s)) return SYMBOL_TO_STREAM_TOKEN.get(s);
+  const clean = s.replace(/(\.NS|\.BO|-EQ)$/, '').replace(/\s+/g, '');
+  if (SYMBOL_TO_STREAM_TOKEN.has(clean)) return SYMBOL_TO_STREAM_TOKEN.get(clean);
+  return null;
+}
+
+function resolveSymbolFromStreamToken(token) {
+  if (!token) return null;
+  return STREAM_TOKEN_TO_SYMBOL.get(token) || null;
+}
+
+async function loadTradejiniSecuritiesCatalog() {
+  try {
+    const res = await httpsRequest('https://api.tradejini.com/mkt-data/scrips/symbol-store/Securities', {
+      method: 'GET',
+      headers: { 'Accept': 'text/csv, application/json' }
+    });
+    if (res.statusCode === 200 && res.body) {
+      const lines = res.body.split('\n');
+      for (let i = 1; i < lines.length; i++) {
+        const parts = lines[i].split(',');
+        const id = parts[0];
+        const dispName = parts[1];
+        const token = parts[2];
+        if (id && id.endsWith('_NSE') && token) {
+          const streamTok = `${token}_NSE`;
+          if (dispName) {
+            const sym = dispName.toUpperCase().trim();
+            SYMBOL_TO_STREAM_TOKEN.set(sym, streamTok);
+            STREAM_TOKEN_TO_SYMBOL.set(streamTok, sym);
+          }
+          const fromId = id.split('_')[1];
+          if (fromId) {
+            const idSym = fromId.toUpperCase().trim();
+            SYMBOL_TO_STREAM_TOKEN.set(idSym, streamTok);
+            if (!STREAM_TOKEN_TO_SYMBOL.has(streamTok)) {
+              STREAM_TOKEN_TO_SYMBOL.set(streamTok, idSym);
+            }
+          }
+        }
+      }
+      console.log(`[Tradejini Catalog] Loaded ${SYMBOL_TO_STREAM_TOKEN.size} equity symbol mappings.`);
+    }
+  } catch (e) {
+    console.warn(`[Tradejini Catalog] Could not fetch securities catalog: ${e.message}`);
+  }
+}
+
+function broadcastSseStream(payload) {
+  if (sseStreamClients.size === 0) return;
+  const msg = `data: ${JSON.stringify(payload)}\n\n`;
+  for (const client of sseStreamClients) {
+    try {
+      client.write(msg);
+    } catch (e) {
+      sseStreamClients.delete(client);
+    }
+  }
+}
+
+async function initTradejiniWebSocketStream() {
+  try {
+    const token = await refreshTradejiniSession(false);
+    if (!token) {
+      console.warn('[Tradejini WebSocket] Session not ready yet. Retrying in 8s...');
+      setTimeout(initTradejiniWebSocketStream, 8000);
+      return;
+    }
+
+    let NxtradStream;
+    try {
+      NxtradStream = require('./lib/tradejini-stream/NxtradStream').default || require('./lib/tradejini-stream/NxtradStream');
+    } catch (reqErr) {
+      console.warn('[Tradejini WebSocket] NxtradStream library not found:', reqErr.message);
+      return;
+    }
+
+    const authToken = `${TJ_API_KEY}:${token}`;
+
+    function onConn(stream, msg) {
+      if (msg.s === 'connected') {
+        tjStreamConnected = true;
+        console.log('[Tradejini WebSocket] Connected successfully to wss://api.tradejini.com!');
+        const tokens = Array.from(tjStreamActiveTokens);
+        stream.subscribeL1(tokens);
+        stream.subscribeL1Snapshot(tokens);
+        broadcastSseStream({
+          type: 'streamStatus',
+          connected: true,
+          timestamp: Date.now()
+        });
+      } else if (msg.s === 'closed') {
+        tjStreamConnected = false;
+        console.warn(`[Tradejini WebSocket] Connection closed (${msg.code}): ${msg.reason}`);
+        broadcastSseStream({
+          type: 'streamStatus',
+          connected: false,
+          reason: msg.reason,
+          timestamp: Date.now()
+        });
+
+        if (msg.code === 4001 || (msg.reason && msg.reason.toLowerCase().includes('unauthor'))) {
+          console.log('[Tradejini WebSocket] Session unauthorized. Re-authenticating via TOTP before reconnecting...');
+          refreshTradejiniSession(true).then(() => {
+            setTimeout(initTradejiniWebSocketStream, 3000);
+          }).catch(() => {
+            setTimeout(initTradejiniWebSocketStream, 10000);
+          });
+        } else {
+          clearTimeout(tjStreamReconnectTimer);
+          tjStreamReconnectTimer = setTimeout(() => {
+            if (tjStreamClient) {
+              tjStreamClient.reconnect().catch(() => initTradejiniWebSocketStream());
+            } else {
+              initTradejiniWebSocketStream();
+            }
+          }, 5000);
+        }
+      }
+    }
+
+    function onStreamData(stream, msg) {
+      if (!msg) return;
+
+      // 1. Market Status Event (Real Exchange Status from Tradejini)
+      if (msg.msgType === 'marketStatus' && Array.isArray(msg.status)) {
+        for (const st of msg.status) {
+          if (st && st.exchSeg) {
+            latestMarketStatus[st.exchSeg] = st.status; // 1 = open, 0 = closed
+          }
+        }
+        broadcastSseStream({
+          type: 'marketStatus',
+          status: latestMarketStatus,
+          timestamp: Date.now()
+        });
+        return;
+      }
+
+      // 2. Level 1 Live Tick Event
+      if (msg.msgType === 'L1') {
+        const streamSym = msg.symbol;
+        const mappedSym = resolveSymbolFromStreamToken(streamSym) || streamSym;
+        const tickPrice = Number(msg.ltp) || Number(msg.dayClose) || Number(msg.close) || 0;
+        if (tickPrice <= 0) return;
+
+        const prevCl = Number(msg.close) || Number(msg.dayClose) || tickPrice;
+        const chg = typeof msg.chng === 'number' ? msg.chng : Number((tickPrice - prevCl).toFixed(2));
+        const chgPct = typeof msg.chngPer === 'number' ? msg.chngPer : (prevCl > 0 ? Number(((chg / prevCl) * 100).toFixed(2)) : 0);
+
+        const quote = {
+          symbol: mappedSym,
+          streamSymbol: streamSym,
+          price: tickPrice,
+          open: Number(msg.open) || tickPrice,
+          high: Number(msg.high) || tickPrice,
+          low: Number(msg.low) || tickPrice,
+          prevClose: prevCl,
+          change: chg,
+          changePercent: chgPct,
+          volume: Number(msg.vol) || 0,
+          time: msg.ltt || '',
+          timestamp: Date.now()
+        };
+
+        liveQuotesMap.set(mappedSym.toUpperCase().trim(), quote);
+        if (streamSym !== mappedSym) {
+          liveQuotesMap.set(streamSym.toUpperCase().trim(), quote);
+        }
+
+        broadcastSseStream({
+          type: 'tick',
+          tick: quote
+        });
+      }
+    }
+
+    tjStreamClient = new NxtradStream('api.tradejini.com', onConn, onStreamData, false);
+    await tjStreamClient.connect(authToken);
+  } catch (err) {
+    console.error('[Tradejini WebSocket] Init exception:', err.message);
+    setTimeout(initTradejiniWebSocketStream, 15000);
+  }
+}
+
 function extractQuoteFromCandles(symbol, candles) {
   if (!candles || candles.length === 0) return null;
   const last = candles[candles.length - 1];
@@ -2342,6 +2602,62 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    // -------------------------------------------------------------------------
+    // API: Real-Time Tradejini WebSocket Stream (Server-Sent Events)
+    // -------------------------------------------------------------------------
+    if (pathname === '/api/tradejini/stream') {
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream; charset=utf-8',
+        'Cache-Control': 'no-cache, no-transform',
+        'Connection': 'keep-alive',
+        'Access-Control-Allow-Origin': '*'
+      });
+      res.write(': connected\n\n');
+
+      const currentQuotes = Array.from(liveQuotesMap.values());
+      res.write(`data: ${JSON.stringify({
+        type: 'snapshot',
+        connected: tjStreamConnected,
+        marketStatus: latestMarketStatus,
+        quotes: currentQuotes
+      })}\n\n`);
+
+      sseStreamClients.add(res);
+
+      req.on('close', () => {
+        sseStreamClients.delete(res);
+      });
+      return;
+    }
+
+    // API: Dynamic Symbol Subscription to WebSocket
+    if (pathname === '/api/tradejini/subscribe') {
+      const sym = (parsedUrl.searchParams.get('symbol') || '').toUpperCase().trim();
+      const token = resolveStreamTokenFromSymbol(sym);
+      if (token && tjStreamClient && tjStreamConnected) {
+        if (!tjStreamActiveTokens.has(token)) {
+          tjStreamActiveTokens.add(token);
+          tjStreamClient.subscribeL1(Array.from(tjStreamActiveTokens));
+        }
+        sendJson(res, 200, { s: 'ok', symbol: sym, streamToken: token, subscribed: true });
+      } else {
+        sendJson(res, 200, { s: 'ok', symbol: sym, streamToken: token || null, subscribed: false });
+      }
+      return;
+    }
+
+    // API: Live Stream Status
+    if (pathname === '/api/tradejini/stream-status') {
+      sendJson(res, 200, {
+        s: 'ok',
+        connected: tjStreamConnected,
+        activeTokensCount: tjStreamActiveTokens.size,
+        activeClients: sseStreamClients.size,
+        marketStatus: latestMarketStatus
+      });
+      return;
+    }
+
     // 4. API: Live 5-Minute Heikin Ashi Trade Setup Scanner
     if (pathname === '/api/tradejini/trade-setup') {
       const setupResult = await getTradejiniTradeSetup();
@@ -2484,10 +2800,15 @@ server.listen(PORT, HOST, () => {
   console.log(` Auto-Login Token: Active (Auto-renew via TOTP Seed: ${TJ_USER_ID})`);
   console.log(` Daily (1D) AAA Morning Scanner: Enabled (189 Instruments)`);
   console.log(` Daily Scheduled Supervisor: Active (08:00, 08:45, 09:08, 09:16, 09:21, 15:35)`);
+  console.log(` Tradejini WebSocket Stream: Initializing (api.tradejini.com)...`);
   console.log(`==================================================================`);
   scheduleDailyTradejiniSupervisor();
   refreshTradejiniSession(false)
-    .then(() => getLiveQuotesSnapshot())
+    .then(() => {
+      initTradejiniWebSocketStream();
+      loadTradejiniSecuritiesCatalog();
+      return getLiveQuotesSnapshot();
+    })
     .then(() => warmupDailyAaaUniverse(false))
     .catch((err) => console.error('[Startup Error]', err));
 });
