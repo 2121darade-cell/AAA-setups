@@ -1924,7 +1924,7 @@ const server = http.createServer(async (req, res) => {
         const body = await parseJsonBody(req);
         const name = (body.name || '').trim();
         const email = (body.email || '').trim().toLowerCase();
-        const phone = (body.phone || '').replace(/\D/g, '');
+        const phone = (body.phone || '').replace(/\D/g, '').slice(-10);
         const password = (body.password || '').trim();
         const tjId = (body.tradejiniClientId || body.tjId || '').trim().toUpperCase();
 
@@ -2141,10 +2141,14 @@ const server = http.createServer(async (req, res) => {
 
         const userId = body.userId;
         const phone = (body.phone || '').replace(/\D/g, '').slice(-10);
+        const email = (body.email || '').trim().toLowerCase();
+        const tjId = (body.tradejiniClientId || body.tjId || '').trim().toUpperCase();
         const db = getUsersDb();
         const target = db.find(u => 
           (userId && u.id === userId) || 
-          (phone && phone.length === 10 && u.phone && u.phone.replace(/\D/g, '').slice(-10) === phone)
+          (phone && phone.length === 10 && u.phone && u.phone.replace(/\D/g, '').slice(-10) === phone) ||
+          (email && u.email && u.email.toLowerCase() === email) ||
+          (tjId && u.tradejiniClientId && u.tradejiniClientId.toUpperCase() === tjId)
         );
 
         if (!target) {
@@ -2168,6 +2172,54 @@ const server = http.createServer(async (req, res) => {
         sendJson(res, 200, {
           s: 'ok',
           message: `User ${target.name} (${target.tradejiniClientId || target.phone}) has been approved.`,
+          user: sanitizeUser(target)
+        });
+      } catch (err) {
+        sendJson(res, 500, { s: 'error', message: err.message });
+      }
+      return;
+    }
+
+    // -------------------------------------------------------------------------
+    // ADMIN API 2B: Revoke User Access (Move back to PENDING)
+    // -------------------------------------------------------------------------
+    if (pathname === '/api/admin/revoke-user' && req.method === 'POST') {
+      try {
+        const body = await parseJsonBody(req);
+        const pin = body.adminPin || req.headers['x-admin-pin'];
+        if (pin !== 'Admin@Fin2026' && pin !== 'admin123' && pin !== 'Admin@Fin777') {
+          sendJson(res, 403, { s: 'error', message: 'Unauthorized: Invalid Admin PIN' });
+          return;
+        }
+
+        const userId = body.userId;
+        const phone = (body.phone || '').replace(/\D/g, '').slice(-10);
+        const db = getUsersDb();
+        const target = db.find(u => 
+          (userId && u.id === userId) || 
+          (phone && phone.length === 10 && u.phone && u.phone.replace(/\D/g, '').slice(-10) === phone)
+        );
+
+        if (!target) {
+          sendJson(res, 404, { s: 'error', message: 'User not found' });
+          return;
+        }
+
+        target.status = 'PENDING';
+        saveUsersDb(db);
+
+        broadcastNtfy({
+          action: 'USER_REVOKE',
+          type: 'USER_STATUS_UPDATE',
+          phone: target.phone,
+          id: target.id,
+          status: 'PENDING',
+          timestamp: Date.now()
+        });
+
+        sendJson(res, 200, {
+          s: 'ok',
+          message: `User ${target.name} status moved back to PENDING.`,
           user: sanitizeUser(target)
         });
       } catch (err) {

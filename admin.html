@@ -205,6 +205,118 @@
     .btn-reject:hover {
       background: #dc2626;
     }
+    .admin-tabs-bar {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 22px;
+      border-bottom: 2px solid #e2e8f0;
+      padding-bottom: 0;
+    }
+    .admin-tab-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 22px;
+      font-size: 14px;
+      font-weight: 700;
+      color: #64748b;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-bottom: none;
+      border-radius: 8px 8px 0 0;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      position: relative;
+      bottom: -2px;
+    }
+    .admin-tab-btn:hover {
+      color: #0f172a;
+      background: #f1f5f9;
+    }
+    .admin-tab-btn.active {
+      color: #2563eb;
+      background: #ffffff;
+      border-color: #cbd5e1 #cbd5e1 #ffffff #cbd5e1;
+      border-bottom: 2px solid #ffffff;
+      box-shadow: 0 -2px 6px rgba(0,0,0,0.03);
+    }
+    .tab-pill {
+      font-size: 11px;
+      font-weight: 800;
+      padding: 2px 8px;
+      border-radius: 9999px;
+    }
+    .tab-pill-pending { background: #fef3c7; color: #b45309; }
+    .tab-pill-approved { background: #d1fae5; color: #047857; }
+    .tab-pill-all { background: #e0f2fe; color: #0369a1; }
+    .btn-vip-key {
+      background: #fef3c7;
+      color: #b45309;
+      border: 1px solid #fde68a;
+      padding: 5px 10px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .btn-vip-key:hover {
+      background: #fde68a;
+    }
+    .btn-revoke {
+      background: #fef2f2;
+      color: #b91c1c;
+      border: 1px solid #fca5a5;
+      padding: 5px 10px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .btn-revoke:hover {
+      background: #fee2e2;
+    }
+    .kpi-card {
+      cursor: pointer;
+      transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s;
+    }
+    .kpi-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+      border-color: #cbd5e1;
+    }
+    .highlight-row {
+      animation: highlightGlow 2.8s ease-out;
+    }
+    @keyframes highlightGlow {
+      0% { background-color: #bbf7d0 !important; }
+      40% { background-color: #dcfce7 !important; }
+      100% { background-color: transparent !important; }
+    }
+    .admin-toast-box {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: #0f172a;
+      color: #ffffff;
+      padding: 14px 22px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.25);
+      z-index: 999999;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      animation: slideInUp 0.25s ease-out;
+    }
+    .admin-toast-box.success { background: #065f46; border: 1px solid #059669; }
+    .admin-toast-box.error { background: #991b1b; border: 1px solid #dc2626; }
+    @keyframes slideInUp {
+      from { transform: translateY(30px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
     .pin-modal-overlay {
       position: fixed;
       top: 0;
@@ -355,21 +467,21 @@
 
     <!-- KPI Summary Row -->
     <div class="kpi-grid">
-      <div class="kpi-card">
+      <div class="kpi-card" id="kpiCardPending" onclick="switchAdminTab('pending')">
         <div class="kpi-icon" style="background:#fef3c7; color:#b45309;">🟡</div>
         <div class="kpi-info">
           <h4>Pending Requests</h4>
           <div class="val" id="kpiPendingCount">0</div>
         </div>
       </div>
-      <div class="kpi-card">
+      <div class="kpi-card" id="kpiCardApproved" onclick="switchAdminTab('approved')">
         <div class="kpi-icon" style="background:#d1fae5; color:#047857;">✅</div>
         <div class="kpi-info">
           <h4>Approved Clients</h4>
           <div class="val" id="kpiApprovedCount">0</div>
         </div>
       </div>
-      <div class="kpi-card">
+      <div class="kpi-card" id="kpiCardTotal" onclick="switchAdminTab('all')">
         <div class="kpi-icon" style="background:#e0f2fe; color:#0284c7;">👥</div>
         <div class="kpi-info">
           <h4>Total Users</h4>
@@ -385,15 +497,34 @@
       </div>
     </div>
 
-    <!-- Panel 1: Pending Client Approvals (Top Priority) -->
-    <div class="panel-card" style="border-left: 4px solid #f59e0b;">
+    <!-- Tab Navigation Bar -->
+    <div class="admin-tabs-bar">
+      <button class="admin-tab-btn active" id="tabBtnPending" onclick="switchAdminTab('pending')">
+        <span>🟡</span>
+        <span>Pending Requests</span>
+        <span class="tab-pill tab-pill-pending" id="badgeTabPending">0</span>
+      </button>
+      <button class="admin-tab-btn" id="tabBtnApproved" onclick="switchAdminTab('approved')">
+        <span>✅</span>
+        <span>Approved People</span>
+        <span class="tab-pill tab-pill-approved" id="badgeTabApproved">0</span>
+      </button>
+      <button class="admin-tab-btn" id="tabBtnAll" onclick="switchAdminTab('all')">
+        <span>👥</span>
+        <span>All Users Directory</span>
+        <span class="tab-pill tab-pill-all" id="badgeTabAll">0</span>
+      </button>
+    </div>
+
+    <!-- Panel 1: Pending Client Approvals -->
+    <div class="panel-card" id="panelPending" style="border-left: 4px solid #f59e0b;">
       <div class="panel-header">
         <h2>
           <span>🟡</span> New Pending Admission Requests
           <span id="badgePendingLive" style="background:#f59e0b; color:#fff; font-size:11px; padding:2px 8px; border-radius:12px; font-weight:700;">0</span>
         </h2>
         <div style="font-size:12px; color:#64748b;">
-          Incoming registration requests from Tradejini account holders appear here in real time.
+          Click "Approve Access" on any request to instantly unlock their trading terminal and shift them to the Approved People tab.
         </div>
       </div>
 
@@ -416,8 +547,39 @@
       </div>
     </div>
 
-    <!-- Panel 2: All Users Directory -->
-    <div class="panel-card">
+    <!-- Panel 2: Approved People & Active Clients -->
+    <div class="panel-card" id="panelApproved" style="border-left: 4px solid #10b981; display:none;">
+      <div class="panel-header">
+        <h2>
+          <span>✅</span> Approved People & Active Clients
+          <span id="badgeApprovedLive" style="background:#10b981; color:#fff; font-size:11px; padding:2px 8px; border-radius:12px; font-weight:700;">0</span>
+        </h2>
+        <div style="display:flex; gap:10px; align-items:center;">
+          <input type="text" id="approvedSearchInput" placeholder="🔍 Search approved people..." style="padding:6px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:12px; width:240px;" />
+        </div>
+      </div>
+
+      <div style="overflow-x:auto;">
+        <table class="admin-table">
+          <thead>
+            <tr>
+              <th>Client Name</th>
+              <th>Mobile Number</th>
+              <th>Tradejini Client ID</th>
+              <th>Approval Date</th>
+              <th>Status</th>
+              <th style="text-align:right;">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="tableApprovedBody">
+            <!-- Dynamically populated -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Panel 3: All Users Directory -->
+    <div class="panel-card" id="panelAll" style="display:none;">
       <div class="panel-header">
         <h2><span>👥</span> Registered Clients & Users Directory</h2>
         <div style="display:flex; gap:10px; align-items:center;">
@@ -504,6 +666,9 @@
       { id: "demo_1", name: "Demo User", phone: "9876543210", tradejiniClientId: "TR1001", role: "USER", status: "APPROVED", date: "2026-10-19 11:30" }
     ];
 
+    let currentAdminTab = 'pending';
+    let lastHighlightedUserId = null;
+
     function getUsers() {
       try {
         const raw = localStorage.getItem(USERS_STORAGE_KEY);
@@ -519,9 +684,25 @@
     }
 
     function saveUsers(users) {
-      localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
-      renderDashboard();
+      try {
+        localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
+      } catch (e) {}
     }
+
+    function showAdminToast(msg, type = 'success') {
+      const existing = document.querySelector('.admin-toast-box');
+      if (existing) existing.remove();
+      const toast = document.createElement('div');
+      toast.className = `admin-toast-box ${type}`;
+      toast.innerHTML = `<span>${type === 'success' ? '✅' : '⚠️'}</span> <span>${msg}</span>`;
+      document.body.appendChild(toast);
+      setTimeout(() => {
+        toast.style.transition = 'opacity 0.4s ease';
+        toast.style.opacity = '0';
+        setTimeout(() => toast.remove(), 400);
+      }, 4000);
+    }
+    window.showAdminToast = showAdminToast;
 
     async function broadcastCloudEvent(payload) {
       try {
@@ -548,7 +729,7 @@
       if (isAuth === 'true') {
         pinOverlay.style.display = 'none';
         adminMainContent.style.display = 'block';
-        renderDashboard();
+        renderDashboard(true);
         initSse();
       } else {
         pinOverlay.style.display = 'flex';
@@ -588,16 +769,18 @@
           try {
             const data = JSON.parse(event.data);
             if (data.message) {
-              const payload = JSON.parse(data.message);
+              const payload = typeof data.message === 'string' ? JSON.parse(data.message) : data.message;
               handleIncomingCloudPayload(payload);
             }
           } catch (e) {}
         };
         es.onerror = function () {
-          document.getElementById('cloudStatusText').textContent = "Reconnecting to cloud...";
+          const el = document.getElementById('cloudStatusText');
+          if (el) el.textContent = "Reconnecting to cloud...";
         };
         es.onopen = function () {
-          document.getElementById('cloudStatusText').textContent = "Real-Time Cloud Connected";
+          const el = document.getElementById('cloudStatusText');
+          if (el) el.textContent = "Real-Time Cloud Connected";
         };
       } catch (err) {
         console.warn("SSE init error:", err);
@@ -605,10 +788,14 @@
     }
 
     function handleIncomingCloudPayload(payload) {
-      if (!payload || !payload.type) return;
-      const users = getUsers();
+      if (!payload) return;
+      const action = payload.action || payload.type;
+      if (!action) return;
 
-      if (payload.type === "REGISTER_REQUEST" && payload.user) {
+      const users = getUsers();
+      let changed = false;
+
+      if ((action === "REGISTER_REQUEST" || action === "USER_REGISTER") && payload.user) {
         const u = payload.user;
         const existingIdx = users.findIndex(x => (x.phone && x.phone === u.phone) || (x.id && x.id === u.id));
         if (existingIdx >= 0) {
@@ -617,7 +804,7 @@
           users[existingIdx].status = "PENDING";
           users[existingIdx].date = u.date || new Date().toLocaleString('en-IN');
         } else {
-          users.push({
+          users.unshift({
             id: u.id || `usr_${Date.now()}`,
             name: u.name,
             phone: u.phone,
@@ -625,17 +812,42 @@
             tradejiniClientId: u.tradejiniClientId || '--',
             role: "USER",
             status: "PENDING",
-            date: u.date || new Date().toLocaleString('en-IN')
+            date: u.date || new Date().toLocaleString('en-IN'),
+            vipKey: u.vipKey || `VIP-${String(u.phone).slice(-4)}-777`
           });
         }
-        saveUsers(users);
+        changed = true;
         playPing();
-      } else if (payload.type === "USER_STATUS_UPDATE" && payload.phone) {
-        const existingIdx = users.findIndex(x => x.phone === payload.phone);
-        if (existingIdx >= 0) {
-          users[existingIdx].status = payload.status;
-          saveUsers(users);
+        showAdminToast(`🔔 New admission request from ${u.name} (${u.tradejiniClientId || u.phone})`, 'success');
+      } else if (action === "USER_STATUS_UPDATE" || action === "USER_APPROVE" || action === "USER_REVOKE") {
+        const target = users.find(x => (payload.id && x.id === payload.id) || (payload.phone && x.phone === payload.phone));
+        if (target) {
+          target.status = payload.status || (action === "USER_APPROVE" ? "APPROVED" : "PENDING");
+          changed = true;
         }
+      } else if (action === "USER_DELETE") {
+        const idx = users.findIndex(x => (payload.userId && x.id === payload.userId) || (payload.phone && x.phone === payload.phone));
+        if (idx >= 0) {
+          users.splice(idx, 1);
+          changed = true;
+        }
+      } else if (action === "SYNC_ALL" && Array.isArray(payload.users)) {
+        payload.users.forEach(cu => {
+          if (!cu || (!cu.id && !cu.phone)) return;
+          const found = users.find(x => (cu.id && x.id === cu.id) || (cu.phone && x.phone === cu.phone));
+          if (!found) {
+            users.push(cu);
+            changed = true;
+          } else if (cu.status && found.status !== cu.status) {
+            found.status = cu.status;
+            changed = true;
+          }
+        });
+      }
+
+      if (changed) {
+        saveUsers(users);
+        renderActiveTab();
       }
     }
 
@@ -655,8 +867,48 @@
       } catch (e) {}
     }
 
-    // 3. User Actions: Approve & Reject
-    window.approveUser = async function(userId, phone) {
+    // Tab Switching
+    function switchAdminTab(tabName, highlightUserId = null) {
+      currentAdminTab = tabName;
+      if (highlightUserId) {
+        lastHighlightedUserId = highlightUserId;
+      }
+
+      const btnPending = document.getElementById('tabBtnPending');
+      const btnApproved = document.getElementById('tabBtnApproved');
+      const btnAll = document.getElementById('tabBtnAll');
+      if (btnPending) btnPending.classList.toggle('active', tabName === 'pending');
+      if (btnApproved) btnApproved.classList.toggle('active', tabName === 'approved');
+      if (btnAll) btnAll.classList.toggle('active', tabName === 'all');
+
+      const pPending = document.getElementById('panelPending');
+      const pApproved = document.getElementById('panelApproved');
+      const pAll = document.getElementById('panelAll');
+      if (pPending) pPending.style.display = (tabName === 'pending') ? 'block' : 'none';
+      if (pApproved) pApproved.style.display = (tabName === 'approved') ? 'block' : 'none';
+      if (pAll) pAll.style.display = (tabName === 'all') ? 'block' : 'none';
+
+      renderActiveTab();
+
+      if (highlightUserId) {
+        setTimeout(() => {
+          const row = document.getElementById(`user-row-${highlightUserId}`);
+          if (row) {
+            row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+        }, 80);
+      }
+    }
+    window.switchAdminTab = switchAdminTab;
+
+    // 3. User Actions: Approve, Revoke, Delete, VIP Key
+    window.approveUser = async function(userId, phone, btnEl) {
+      if (btnEl) {
+        btnEl.disabled = true;
+        btnEl.innerHTML = `<span style="animation: spin 0.8s linear infinite; display: inline-block;">⏳</span> Approving...`;
+      }
+
+      let serverUser = null;
       try {
         const res = await fetch('./api/admin/approve-user', {
           method: 'POST',
@@ -664,8 +916,8 @@
           body: JSON.stringify({ adminPin: 'Admin@Fin2026', userId: userId, phone: phone })
         });
         const data = await res.json();
-        if (data && data.s === 'ok') {
-          alert(`✅ User has been approved! Terminal access is unlocked.`);
+        if (data && data.s === 'ok' && data.user) {
+          serverUser = data.user;
         }
       } catch (e) {
         console.warn('Approve error:', e);
@@ -673,8 +925,14 @@
 
       const users = getUsers();
       const user = users.find(u => (userId && u.id === userId) || (phone && u.phone === phone));
+      let approvedName = 'User';
       if (user) {
         user.status = "APPROVED";
+        approvedName = user.name || user.phone;
+        saveUsers(users);
+      } else if (serverUser) {
+        users.unshift(serverUser);
+        approvedName = serverUser.name || serverUser.phone;
         saveUsers(users);
       }
 
@@ -686,7 +944,48 @@
         status: "APPROVED",
         timestamp: Date.now()
       });
-      renderDashboard();
+
+      // Shift tab to Approved People!
+      switchAdminTab('approved', userId);
+      showAdminToast(`🎉 ${approvedName} has been approved and shifted to Approved People tab!`, 'success');
+      playPing();
+    };
+
+    window.revokeUser = async function(userId, phone, btnEl) {
+      if (!confirm('Move this client back to Pending status?')) return;
+      if (btnEl) {
+        btnEl.disabled = true;
+        btnEl.innerHTML = '⏳ Moving...';
+      }
+
+      try {
+        await fetch('./api/admin/revoke-user', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ adminPin: 'Admin@Fin2026', userId: userId, phone: phone })
+        });
+      } catch (e) {}
+
+      const users = getUsers();
+      const user = users.find(u => (userId && u.id === userId) || (phone && u.phone === phone));
+      let userName = 'User';
+      if (user) {
+        user.status = "PENDING";
+        userName = user.name || user.phone;
+        saveUsers(users);
+      }
+
+      await broadcastCloudEvent({
+        type: "USER_STATUS_UPDATE",
+        action: "USER_REVOKE",
+        id: userId,
+        phone: phone,
+        status: "PENDING",
+        timestamp: Date.now()
+      });
+
+      switchAdminTab('pending', userId);
+      showAdminToast(`Client ${userName} access revoked. Moved to Pending Requests tab.`, 'success');
     };
 
     window.rejectUser = async function(userId, phone) {
@@ -705,7 +1004,8 @@
         status: "REJECTED",
         timestamp: Date.now()
       });
-      renderDashboard();
+      renderActiveTab();
+      showAdminToast(`User registration request has been rejected.`, 'error');
     };
 
     window.deleteUser = async function(userId, phone) {
@@ -721,86 +1021,197 @@
       let users = getUsers();
       users = users.filter(u => !( (userId && u.id === userId) || (phone && u.phone === phone) ));
       saveUsers(users);
-      renderDashboard();
+      renderActiveTab();
+      showAdminToast(`User permanently deleted.`, 'success');
+    };
+
+    window.copyVipKey = function(key, name) {
+      if (!key) key = "FINVIP2026";
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(key).then(() => {
+          showAdminToast(`🔑 VIP Key for ${name || 'User'} copied: ${key}`, 'success');
+        }).catch(() => {
+          prompt("Copy VIP Access Key:", key);
+        });
+      } else {
+        prompt("Copy VIP Access Key:", key);
+      }
     };
 
     // 4. Render Admin Dashboard
-    async function renderDashboard() {
-      // Sync from Server API
-      try {
-        const res = await fetch('./api/admin/users?pin=Admin@Fin2026');
-        if (res.ok) {
-          const data = await res.json();
-          if (data && data.s === 'ok' && Array.isArray(data.users)) {
-            saveUsers(data.users);
-          }
-        }
-      } catch (e) {}
-
+    function renderCountersOnly() {
       const users = getUsers();
-      const searchVal = (document.getElementById('adminUserSearch')?.value || '').toLowerCase().trim();
+      const pendingUsers = users.filter(u => u.status === "PENDING");
+      const approvedUsers = users.filter(u => u.status === "APPROVED");
+
+      const pCount = pendingUsers.length;
+      const aCount = approvedUsers.length;
+      const tCount = users.length;
+
+      const elP1 = document.getElementById('kpiPendingCount');
+      const elP2 = document.getElementById('badgePendingLive');
+      const elP3 = document.getElementById('badgeTabPending');
+      if (elP1) elP1.textContent = pCount;
+      if (elP2) elP2.textContent = pCount;
+      if (elP3) elP3.textContent = pCount;
+
+      const elA1 = document.getElementById('kpiApprovedCount');
+      const elA2 = document.getElementById('badgeApprovedLive');
+      const elA3 = document.getElementById('badgeTabApproved');
+      if (elA1) elA1.textContent = aCount;
+      if (elA2) elA2.textContent = aCount;
+      if (elA3) elA3.textContent = aCount;
+
+      const elT1 = document.getElementById('kpiTotalCount');
+      const elT2 = document.getElementById('badgeTabAll');
+      if (elT1) elT1.textContent = tCount;
+      if (elT2) elT2.textContent = tCount;
+    }
+
+    function renderActiveTab() {
+      renderCountersOnly();
+      const users = getUsers();
 
       const pendingUsers = users.filter(u => u.status === "PENDING");
       const approvedUsers = users.filter(u => u.status === "APPROVED");
 
-      // KPIs
-      document.getElementById('kpiPendingCount').textContent = pendingUsers.length;
-      document.getElementById('badgePendingLive').textContent = pendingUsers.length;
-      document.getElementById('kpiApprovedCount').textContent = approvedUsers.length;
-      document.getElementById('kpiTotalCount').textContent = users.length;
-
-      // Table 1: Pending Users
+      // 1. Render Pending Table
       const tbPending = document.getElementById('tablePendingBody');
-      if (pendingUsers.length === 0) {
-        tbPending.innerHTML = `<tr><td colspan="6" style="text-align:center; color:#94a3b8; padding:24px;">No pending requests available. All users are approved!</td></tr>`;
-      } else {
-        tbPending.innerHTML = pendingUsers.map(u => `
-          <tr>
-            <td><strong>${u.name}</strong><br><small style="color:#64748b;">${u.email || ''}</small></td>
-            <td><code style="font-family:'JetBrains Mono'; color:#2563eb;">${u.phone}</code></td>
-            <td><span style="background:#eff6ff; color:#1d4ed8; padding:3px 8px; border-radius:5px; font-weight:800; font-family:'JetBrains Mono';">${u.tradejiniClientId || '--'}</span></td>
-            <td style="color:#64748b;">${u.date || '--'}</td>
-            <td><span class="badge-status badge-pending">🟡 PENDING</span></td>
-            <td style="text-align:right;">
-              <button class="btn-approve" onclick="approveUser('${u.id}', '${u.phone}')">✅ Approve Access</button>
-              <button class="btn-reject" style="margin-left:6px;" onclick="rejectUser('${u.id}', '${u.phone}')">❌ Reject</button>
-            </td>
-          </tr>
-        `).join('');
+      if (tbPending) {
+        if (pendingUsers.length === 0) {
+          tbPending.innerHTML = `<tr><td colspan="6" style="text-align:center; color:#94a3b8; padding:32px 20px;">
+            <div style="font-size:24px; margin-bottom:8px;">🎉</div>
+            <div style="font-weight:700; color:#334155; font-size:14px;">No Pending Admission Requests!</div>
+            <div style="font-size:12px; color:#64748b; margin-top:4px;">All registered clients have been verified and approved.</div>
+          </td></tr>`;
+        } else {
+          tbPending.innerHTML = pendingUsers.map(u => {
+            const isHighlighted = (lastHighlightedUserId && u.id === lastHighlightedUserId);
+            return `
+              <tr id="user-row-${u.id}" class="${isHighlighted ? 'highlight-row' : ''}">
+                <td><strong>${u.name}</strong><br><small style="color:#64748b;">${u.email || ''}</small></td>
+                <td><code style="font-family:'JetBrains Mono'; color:#2563eb; font-weight:700;">${u.phone}</code></td>
+                <td><span style="background:#eff6ff; color:#1d4ed8; padding:3px 9px; border-radius:5px; font-weight:800; font-family:'JetBrains Mono';">${u.tradejiniClientId || '--'}</span></td>
+                <td style="color:#64748b;">${u.date || '--'}</td>
+                <td><span class="badge-status badge-pending">🟡 PENDING</span></td>
+                <td style="text-align:right;">
+                  <button class="btn-approve" onclick="approveUser('${u.id}', '${u.phone}', this)">✅ Approve Access</button>
+                  <button class="btn-reject" style="margin-left:6px;" onclick="rejectUser('${u.id}', '${u.phone}')">❌ Reject</button>
+                </td>
+              </tr>
+            `;
+          }).join('');
+        }
       }
 
-      // Table 2: All Users
+      // 2. Render Approved Table
+      const tbApproved = document.getElementById('tableApprovedBody');
+      if (tbApproved) {
+        const approvedSearch = (document.getElementById('approvedSearchInput')?.value || '').toLowerCase().trim();
+        let listApproved = approvedUsers;
+        if (approvedSearch) {
+          listApproved = approvedUsers.filter(u => 
+            (u.name && u.name.toLowerCase().includes(approvedSearch)) ||
+            (u.phone && u.phone.includes(approvedSearch)) ||
+            (u.tradejiniClientId && u.tradejiniClientId.toLowerCase().includes(approvedSearch))
+          );
+        }
+
+        if (listApproved.length === 0) {
+          tbApproved.innerHTML = `<tr><td colspan="6" style="text-align:center; color:#94a3b8; padding:32px 20px;">
+            <div style="font-size:24px; margin-bottom:8px;">👥</div>
+            <div style="font-weight:700; color:#334155; font-size:14px;">No approved clients found.</div>
+          </td></tr>`;
+        } else {
+          tbApproved.innerHTML = listApproved.map(u => {
+            const isHighlighted = (lastHighlightedUserId && u.id === lastHighlightedUserId);
+            return `
+              <tr id="user-row-${u.id}" class="${isHighlighted ? 'highlight-row' : ''}">
+                <td><strong>${u.name}</strong><br><small style="color:#64748b;">${u.email || ''}</small></td>
+                <td><code style="font-family:'JetBrains Mono'; color:#0f172a; font-weight:700;">${u.phone}</code></td>
+                <td><span style="background:#ecfdf5; color:#047857; padding:3px 9px; border-radius:5px; font-weight:800; font-family:'JetBrains Mono'; border:1px solid #a7f3d0;">${u.tradejiniClientId || '--'}</span></td>
+                <td style="color:#64748b;">${u.date || '--'}</td>
+                <td><span class="badge-status badge-approved">✅ APPROVED</span></td>
+                <td style="text-align:right;">
+                  <button class="btn-vip-key" onclick="copyVipKey('${u.vipKey}', '${u.name}')" title="Copy VIP Access Key">🔑 VIP Key</button>
+                  <button class="btn-revoke" style="margin-left:6px;" onclick="revokeUser('${u.id}', '${u.phone}', this)" title="Revoke access and move to pending">↩️ Revoke</button>
+                  ${u.role !== 'ADMIN' ? `<button style="background:none; border:none; color:#ef4444; cursor:pointer; font-size:14px; margin-left:8px;" onclick="deleteUser('${u.id}', '${u.phone}')" title="Delete User">🗑️</button>` : ''}
+                </td>
+              </tr>
+            `;
+          }).join('');
+        }
+      }
+
+      // 3. Render All Users Table
       const tbAll = document.getElementById('tableAllUsersBody');
-      let filtered = users;
-      if (searchVal) {
-        filtered = users.filter(u => 
-          (u.name && u.name.toLowerCase().includes(searchVal)) || 
-          (u.phone && u.phone.includes(searchVal)) ||
-          (u.tradejiniClientId && u.tradejiniClientId.toLowerCase().includes(searchVal))
-        );
+      if (tbAll) {
+        const searchVal = (document.getElementById('adminUserSearch')?.value || '').toLowerCase().trim();
+        let filtered = users;
+        if (searchVal) {
+          filtered = users.filter(u => 
+            (u.name && u.name.toLowerCase().includes(searchVal)) || 
+            (u.phone && u.phone.includes(searchVal)) ||
+            (u.tradejiniClientId && u.tradejiniClientId.toLowerCase().includes(searchVal))
+          );
+        }
+
+        tbAll.innerHTML = filtered.map(u => {
+          let badge = `<span class="badge-status badge-pending">🟡 PENDING</span>`;
+          if (u.status === "APPROVED") badge = `<span class="badge-status badge-approved">✅ APPROVED</span>`;
+          if (u.status === "REJECTED") badge = `<span class="badge-status badge-rejected">❌ REJECTED</span>`;
+
+          const isHighlighted = (lastHighlightedUserId && u.id === lastHighlightedUserId);
+          return `
+            <tr id="user-row-${u.id}" class="${isHighlighted ? 'highlight-row' : ''}">
+              <td><strong>${u.name}</strong><br><small style="color:#64748b;">${u.email || ''}</small></td>
+              <td><code style="font-family:'JetBrains Mono';">${u.phone}</code></td>
+              <td><span style="background:#eff6ff; color:#1d4ed8; padding:2px 7px; border-radius:4px; font-weight:800; font-family:'JetBrains Mono'; font-size:11px;">${u.tradejiniClientId || '--'}</span></td>
+              <td><span style="font-size:11px; font-weight:700; color:#64748b;">${u.role || 'USER'}</span></td>
+              <td style="color:#64748b;">${u.date || '--'}</td>
+              <td>${badge}</td>
+              <td style="text-align:right;">
+                ${u.status !== 'APPROVED' ? `<button class="btn-approve" style="padding:4px 8px; font-size:11px;" onclick="approveUser('${u.id}', '${u.phone}', this)">✅ Approve</button>` : ''}
+                ${u.status === 'APPROVED' ? `<button class="btn-revoke" style="padding:4px 8px; font-size:11px;" onclick="revokeUser('${u.id}', '${u.phone}', this)">↩️ Revoke</button>` : ''}
+                ${u.status !== 'REJECTED' && u.status !== 'APPROVED' ? `<button class="btn-reject" style="padding:4px 8px; font-size:11px; margin-left:4px;" onclick="rejectUser('${u.id}', '${u.phone}')">Reject</button>` : ''}
+                ${u.role !== 'ADMIN' ? `<button style="background:none; border:none; color:#ef4444; cursor:pointer; font-size:12px; margin-left:6px;" onclick="deleteUser('${u.id}', '${u.phone}')" title="Delete">🗑️</button>` : ''}
+              </td>
+            </tr>
+          `;
+        }).join('');
       }
 
-      tbAll.innerHTML = filtered.map(u => {
-        let badge = `<span class="badge-status badge-pending">🟡 PENDING</span>`;
-        if (u.status === "APPROVED") badge = `<span class="badge-status badge-approved">✅ APPROVED</span>`;
-        if (u.status === "REJECTED") badge = `<span class="badge-status badge-rejected">❌ REJECTED</span>`;
+      if (lastHighlightedUserId) {
+        setTimeout(() => { lastHighlightedUserId = null; }, 3000);
+      }
+    }
 
-        return `
-          <tr>
-            <td><strong>${u.name}</strong><br><small style="color:#64748b;">${u.email || ''}</small></td>
-            <td><code style="font-family:'JetBrains Mono';">${u.phone}</code></td>
-            <td><span style="background:#eff6ff; color:#1d4ed8; padding:2px 7px; border-radius:4px; font-weight:800; font-family:'JetBrains Mono'; font-size:11px;">${u.tradejiniClientId || '--'}</span></td>
-            <td><span style="font-size:11px; font-weight:700; color:#64748b;">${u.role || 'USER'}</span></td>
-            <td style="color:#64748b;">${u.date || '--'}</td>
-            <td>${badge}</td>
-            <td style="text-align:right;">
-              ${u.status !== 'APPROVED' ? `<button class="btn-approve" style="padding:4px 8px; font-size:11px;" onclick="approveUser('${u.id}', '${u.phone}')">✅ Approve</button>` : ''}
-              ${u.status !== 'REJECTED' ? `<button class="btn-reject" style="padding:4px 8px; font-size:11px; margin-left:4px;" onclick="rejectUser('${u.id}', '${u.phone}')">Reject</button>` : ''}
-              ${u.role !== 'ADMIN' ? `<button style="background:none; border:none; color:#ef4444; cursor:pointer; font-size:12px; margin-left:6px;" onclick="deleteUser('${u.id}', '${u.phone}')" title="Delete">🗑️</button>` : ''}
-            </td>
-          </tr>
-        `;
-      }).join('');
+    async function renderDashboard(syncFromServer = true) {
+      if (syncFromServer) {
+        try {
+          const res = await fetch('./api/admin/users?pin=Admin@Fin2026');
+          if (res.ok) {
+            const data = await res.json();
+            if (data && data.s === 'ok' && Array.isArray(data.users)) {
+              saveUsers(data.users);
+            }
+          }
+        } catch (e) {}
+      }
+
+      const users = getUsers();
+      const pendingUsers = users.filter(u => u.status === "PENDING");
+
+      if (!window._initialTabSelected) {
+        window._initialTabSelected = true;
+        if (pendingUsers.length > 0) {
+          currentAdminTab = 'pending';
+        } else {
+          currentAdminTab = 'approved';
+        }
+      }
+
+      switchAdminTab(currentAdminTab);
     }
 
     document.getElementById('adminUserSearch')?.addEventListener('input', renderDashboard);
