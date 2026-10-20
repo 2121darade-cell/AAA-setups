@@ -105,14 +105,43 @@ const raw60dCache = new Map();
 let lastMorningScanDate = '';
 let morningWarmupInFlight = null;
 
+// Official Indian Stock Market (NSE/BSE) Trading Holidays (2025/2026)
+const NSE_HOLIDAYS_SET = new Set([
+  '2026-01-26', // Republic Day
+  '2026-02-18', // Maha Shivratri
+  '2026-03-03', // Holi
+  '2026-03-26', // Id-ul-Fitr (Ramzan Eid)
+  '2026-04-03', // Good Friday
+  '2026-04-14', // Dr. Baba Saheb Ambedkar Jayanti
+  '2026-05-01', // Maharashtra Day
+  '2026-05-28', // Bakri Eid
+  '2026-06-17', // Muharram
+  '2026-08-15', // Independence Day
+  '2026-09-16', // Milad-un-Nabi
+  '2026-10-02', // Mahatma Gandhi Jayanti
+  '2026-10-20', // Market Holiday (Dussehra / Special Clearing)
+  '2026-10-21', // Dussehra
+  '2026-11-08', // Diwali-Laxmi Pujan
+  '2026-11-10', // Diwali-Balipratipada
+  '2026-11-24', // Gurunanak Jayanti
+  '2026-12-25'  // Christmas
+]);
+
 function isIndianMarketHours() {
-  const istOffset = 19800000;
+  const istOffset = 19800000; // +05:30 in ms
   const istDate = new Date(Date.now() + istOffset);
   const day = istDate.getUTCDay(); // 0: Sun, 1: Mon, ..., 5: Fri, 6: Sat
   if (day === 0 || day === 6) return false;
+
+  const yyyy = istDate.getUTCFullYear();
+  const mm = String(istDate.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(istDate.getUTCDate()).padStart(2, '0');
+  const dateStr = `${yyyy}-${mm}-${dd}`;
+  if (NSE_HOLIDAYS_SET.has(dateStr)) return false;
+
   const mins = istDate.getUTCHours() * 60 + istDate.getUTCMinutes();
-  // Mon-Fri 09:15 to 15:35 IST (555 to 935 minutes)
-  return mins >= 555 && mins <= 935;
+  // Mon-Fri 09:15 to 15:30 IST (555 to 930 minutes)
+  return mins >= 555 && mins <= 930;
 }
 
 function getRaw60dTtlMs() {
@@ -467,6 +496,71 @@ function aggregateBarsToDaily(candles5m, liveQuote = null) {
   return Array.from(byDay.values());
 }
 
+// Aggregate Daily (1D) bars into Weekly (1W) OHLCV candles
+function aggregateDailyToWeekly(dailyCandles) {
+  const byWeek = new Map();
+  for (const c of dailyCandles) {
+    const d = new Date(c.timestamp);
+    const dayOfWeek = (d.getUTCDay() + 6) % 7; // Monday is 0
+    const mondayTs = c.timestamp - (dayOfWeek * 86400000);
+    const mDate = formatIst(mondayTs);
+    const weekKey = `W_${mDate.fullDate}`;
+
+    if (!byWeek.has(weekKey)) {
+      byWeek.set(weekKey, {
+        timestamp: c.timestamp,
+        date: mDate.ddMon || c.date,
+        fullDate: `Week of ${mDate.fullDate || c.fullDate}`,
+        time: 'Weekly (1W)',
+        open: c.open,
+        high: c.high,
+        low: c.low,
+        close: c.close,
+        volume: c.volume || 0
+      });
+    } else {
+      const w = byWeek.get(weekKey);
+      if (c.high > w.high) w.high = c.high;
+      if (c.low < w.low) w.low = c.low;
+      w.close = c.close;
+      w.volume += (c.volume || 0);
+    }
+  }
+  return Array.from(byWeek.values());
+}
+
+// Aggregate Daily (1D) bars into Monthly (1M) OHLCV candles
+function aggregateDailyToMonthly(dailyCandles) {
+  const byMonth = new Map();
+  for (const c of dailyCandles) {
+    const d = new Date(c.timestamp + 19800000); // IST
+    const monthKey = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+    const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const monthName = `${monthNames[d.getUTCMonth()]} ${String(d.getUTCFullYear()).slice(-2)}`;
+
+    if (!byMonth.has(monthKey)) {
+      byMonth.set(monthKey, {
+        timestamp: c.timestamp,
+        date: monthName,
+        fullDate: `${monthName} (1M)`,
+        time: 'Monthly (1M)',
+        open: c.open,
+        high: c.high,
+        low: c.low,
+        close: c.close,
+        volume: c.volume || 0
+      });
+    } else {
+      const m = byMonth.get(monthKey);
+      if (c.high > m.high) m.high = c.high;
+      if (c.low < m.low) m.low = c.low;
+      m.close = c.close;
+      m.volume += (c.volume || 0);
+    }
+  }
+  return Array.from(byMonth.values());
+}
+
 // Aggregate 5m Tradejini bars into 15m or 60m (1h) OHLCV candles
 function aggregateBarsToMinutes(candles5m, groupCount) {
   const out = [];
@@ -574,11 +668,11 @@ async function fetchRawTradejiniBars(symbol, rawInterval = '5', reqDays = 7) {
   };
 }
 
-// 4. Fetch Real Live Candles from Tradejini (Supports 1m, 5m, 15m, 60m, and Daily 'D')
+// 4. Fetch Real Live Candles from Tradejini (Supports 1m, 5m, 15m, 60m, Daily 'D', Weekly 'W', and Monthly 'M')
 async function getTradejiniCandles(symbol, interval = '5', days = 7) {
   const normIntv = String(interval || '5').toUpperCase();
-  const tjInterval = ['1', '5', '15', '60', 'D', '1D'].includes(normIntv)
-    ? (normIntv === '1D' ? 'D' : normIntv)
+  const tjInterval = ['1', '5', '15', '60', 'D', '1D', 'W', '1W', 'M', '1M'].includes(normIntv)
+    ? (normIntv === '1D' ? 'D' : (normIntv === '1W' ? 'W' : (normIntv === '1M' ? 'M' : normIntv)))
     : '5';
   const tradejiniId = resolveTradejiniId(symbol);
 
@@ -590,17 +684,23 @@ async function getTradejiniCandles(symbol, interval = '5', days = 7) {
     return fetchRawTradejiniBars(symbol, '5', reqDays);
   }
 
-  // For 15m, 60m (1h), and Daily ('D'), aggregate from Tradejini 5m OHLCV bars
-  const baseDays = tjInterval === 'D' ? 60 : 15;
+  // For 15m, 60m (1h), Daily ('D'), Weekly ('W'), and Monthly ('M')
+  const baseDays = (tjInterval === 'W' || tjInterval === 'M') ? 365 : (tjInterval === 'D' ? 60 : 15);
   const base5m = await fetchRawTradejiniBars(symbol, '5', baseDays);
   if (!base5m || base5m.s !== 'ok' || !Array.isArray(base5m.candles) || base5m.candles.length === 0) {
     return { s: 'error', symbol, tradejiniId, candles: [] };
   }
 
   let aggCandles = [];
+  const liveQ = liveQuotesMap.get(symbol.toUpperCase().trim()) || base5m.quote;
   if (tjInterval === 'D') {
-    const liveQ = liveQuotesMap.get(symbol.toUpperCase().trim()) || base5m.quote;
     aggCandles = aggregateBarsToDaily(base5m.candles, liveQ);
+  } else if (tjInterval === 'W') {
+    const daily = aggregateBarsToDaily(base5m.candles, liveQ);
+    aggCandles = aggregateDailyToWeekly(daily);
+  } else if (tjInterval === 'M') {
+    const daily = aggregateBarsToDaily(base5m.candles, liveQ);
+    aggCandles = aggregateDailyToMonthly(daily);
   } else if (tjInterval === '15') {
     aggCandles = aggregateBarsToMinutes(base5m.candles, 3);
   } else if (tjInterval === '60') {
@@ -1933,11 +2033,11 @@ const server = http.createServer(async (req, res) => {
 
         const db = getUsersDb();
         const cleanIdent = identifier.toUpperCase();
-        const cleanPhone = identifier.replace(/\D/g, '');
+        const cleanPhone = identifier.replace(/\D/g, '').slice(-10);
 
         let user = db.find(u => 
           (u.tradejiniClientId && u.tradejiniClientId.toUpperCase() === cleanIdent) ||
-          (cleanPhone.length === 10 && u.phone === cleanPhone) ||
+          (cleanPhone.length === 10 && u.phone && u.phone.replace(/\D/g, '').slice(-10) === cleanPhone) ||
           (u.email && u.email.toUpperCase() === cleanIdent) ||
           (u.vipKey && u.vipKey.toUpperCase() === cleanIdent)
         );
@@ -1990,13 +2090,13 @@ const server = http.createServer(async (req, res) => {
     // -------------------------------------------------------------------------
     if (pathname === '/api/auth/status') {
       const id = parsedUrl.searchParams.get('id');
-      const phone = (parsedUrl.searchParams.get('phone') || '').replace(/\D/g, '');
+      const phone = (parsedUrl.searchParams.get('phone') || '').replace(/\D/g, '').slice(-10);
       const tjId = (parsedUrl.searchParams.get('tjId') || '').toUpperCase();
 
       const db = getUsersDb();
       const user = db.find(u => 
         (id && u.id === id) || 
-        (phone && phone.length === 10 && u.phone === phone) || 
+        (phone && phone.length === 10 && u.phone && u.phone.replace(/\D/g, '').slice(-10) === phone) || 
         (tjId && u.tradejiniClientId && u.tradejiniClientId.toUpperCase() === tjId)
       );
 
@@ -2040,9 +2140,12 @@ const server = http.createServer(async (req, res) => {
         }
 
         const userId = body.userId;
-        const phone = (body.phone || '').replace(/\D/g, '');
+        const phone = (body.phone || '').replace(/\D/g, '').slice(-10);
         const db = getUsersDb();
-        const target = db.find(u => (userId && u.id === userId) || (phone && phone.length === 10 && u.phone === phone));
+        const target = db.find(u => 
+          (userId && u.id === userId) || 
+          (phone && phone.length === 10 && u.phone && u.phone.replace(/\D/g, '').slice(-10) === phone)
+        );
 
         if (!target) {
           sendJson(res, 404, { s: 'error', message: 'User not found' });
@@ -2064,7 +2167,7 @@ const server = http.createServer(async (req, res) => {
 
         sendJson(res, 200, {
           s: 'ok',
-          message: `युझर ${target.name} (${target.tradejiniClientId || target.phone}) मंजूर करण्यात आला आहे.`,
+          message: `User ${target.name} (${target.tradejiniClientId || target.phone}) has been approved.`,
           user: sanitizeUser(target)
         });
       } catch (err) {
@@ -2087,10 +2190,16 @@ const server = http.createServer(async (req, res) => {
 
         let db = getUsersDb();
         const userId = body.userId;
-        const phone = (body.phone || '').replace(/\D/g, '');
-        const target = db.find(u => (userId && u.id === userId) || (phone && phone.length === 10 && u.phone === phone));
+        const phone = (body.phone || '').replace(/\D/g, '').slice(-10);
+        const target = db.find(u => 
+          (userId && u.id === userId) || 
+          (phone && phone.length === 10 && u.phone && u.phone.replace(/\D/g, '').slice(-10) === phone)
+        );
 
-        db = db.filter(u => !( (userId && u.id === userId) || (phone && phone.length === 10 && u.phone === phone) ));
+        db = db.filter(u => !( 
+          (userId && u.id === userId) || 
+          (phone && phone.length === 10 && u.phone && u.phone.replace(/\D/g, '').slice(-10) === phone) 
+        ));
         saveUsersDb(db);
 
         if (target) {

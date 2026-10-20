@@ -10,7 +10,10 @@
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="./assets/style.css" />
   <style>
-    body {
+    html, body {
+      overflow-y: auto !important;
+      height: auto !important;
+      min-height: 100vh;
       background-color: #f8fafc;
       color: #0f172a;
       font-family: 'Plus Jakarta Sans', sans-serif;
@@ -653,17 +656,23 @@
     }
 
     // 3. User Actions: Approve & Reject
-    window.approveUser = async function(phone) {
+    window.approveUser = async function(userId, phone) {
       try {
-        await fetch('./api/admin/approve-user', {
+        const res = await fetch('./api/admin/approve-user', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ adminPin: 'Admin@Fin2026', phone: phone })
+          body: JSON.stringify({ adminPin: 'Admin@Fin2026', userId: userId, phone: phone })
         });
-      } catch (e) {}
+        const data = await res.json();
+        if (data && data.s === 'ok') {
+          alert(`✅ User has been approved! Terminal access is unlocked.`);
+        }
+      } catch (e) {
+        console.warn('Approve error:', e);
+      }
 
       const users = getUsers();
-      const user = users.find(u => u.phone === phone);
+      const user = users.find(u => (userId && u.id === userId) || (phone && u.phone === phone));
       if (user) {
         user.status = "APPROVED";
         saveUsers(users);
@@ -672,18 +681,18 @@
       await broadcastCloudEvent({
         type: "USER_STATUS_UPDATE",
         action: "USER_APPROVE",
+        id: userId,
         phone: phone,
         status: "APPROVED",
         timestamp: Date.now()
       });
-      alert(`✅ User (${phone}) has been approved! Terminal access is now unlocked.`);
       renderDashboard();
     };
 
-    window.rejectUser = async function(phone) {
+    window.rejectUser = async function(userId, phone) {
       if (!confirm(`Are you sure you want to reject this user registration request?`)) return;
       const users = getUsers();
-      const user = users.find(u => u.phone === phone);
+      const user = users.find(u => (userId && u.id === userId) || (phone && u.phone === phone));
       if (user) {
         user.status = "REJECTED";
         saveUsers(users);
@@ -691,6 +700,7 @@
 
       await broadcastCloudEvent({
         type: "USER_STATUS_UPDATE",
+        id: userId,
         phone: phone,
         status: "REJECTED",
         timestamp: Date.now()
@@ -698,18 +708,18 @@
       renderDashboard();
     };
 
-    window.deleteUser = async function(phone) {
+    window.deleteUser = async function(userId, phone) {
       if (!confirm(`Are you sure you want to permanently delete this user?`)) return;
       try {
         await fetch('./api/admin/delete-user', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ adminPin: 'Admin@Fin2026', phone: phone })
+          body: JSON.stringify({ adminPin: 'Admin@Fin2026', userId: userId, phone: phone })
         });
       } catch (e) {}
 
       let users = getUsers();
-      users = users.filter(u => u.phone !== phone);
+      users = users.filter(u => !( (userId && u.id === userId) || (phone && u.phone === phone) ));
       saveUsers(users);
       renderDashboard();
     };
@@ -752,8 +762,8 @@
             <td style="color:#64748b;">${u.date || '--'}</td>
             <td><span class="badge-status badge-pending">🟡 PENDING</span></td>
             <td style="text-align:right;">
-              <button class="btn-approve" onclick="approveUser('${u.phone}')">✅ Approve Access</button>
-              <button class="btn-reject" style="margin-left:6px;" onclick="rejectUser('${u.phone}')">❌ Reject</button>
+              <button class="btn-approve" onclick="approveUser('${u.id}', '${u.phone}')">✅ Approve Access</button>
+              <button class="btn-reject" style="margin-left:6px;" onclick="rejectUser('${u.id}', '${u.phone}')">❌ Reject</button>
             </td>
           </tr>
         `).join('');
@@ -784,9 +794,9 @@
             <td style="color:#64748b;">${u.date || '--'}</td>
             <td>${badge}</td>
             <td style="text-align:right;">
-              ${u.status !== 'APPROVED' ? `<button class="btn-approve" style="padding:4px 8px; font-size:11px;" onclick="approveUser('${u.phone}')">✅ Approve</button>` : ''}
-              ${u.status !== 'REJECTED' ? `<button class="btn-reject" style="padding:4px 8px; font-size:11px; margin-left:4px;" onclick="rejectUser('${u.phone}')">Reject</button>` : ''}
-              ${u.role !== 'ADMIN' ? `<button style="background:none; border:none; color:#ef4444; cursor:pointer; font-size:12px; margin-left:6px;" onclick="deleteUser('${u.phone}')" title="Delete">🗑️</button>` : ''}
+              ${u.status !== 'APPROVED' ? `<button class="btn-approve" style="padding:4px 8px; font-size:11px;" onclick="approveUser('${u.id}', '${u.phone}')">✅ Approve</button>` : ''}
+              ${u.status !== 'REJECTED' ? `<button class="btn-reject" style="padding:4px 8px; font-size:11px; margin-left:4px;" onclick="rejectUser('${u.id}', '${u.phone}')">Reject</button>` : ''}
+              ${u.role !== 'ADMIN' ? `<button style="background:none; border:none; color:#ef4444; cursor:pointer; font-size:12px; margin-left:6px;" onclick="deleteUser('${u.id}', '${u.phone}')" title="Delete">🗑️</button>` : ''}
             </td>
           </tr>
         `;

@@ -229,6 +229,28 @@ const AuthEngine = {
     } else if (user.status === 'PENDING') {
       if (btnLogin) btnLogin.style.display = 'inline-flex';
       this.showPendingModal(user);
+      // Immediately check backend server status in case user was approved while offline
+      const tjParam = user.tradejiniClientId || '';
+      fetch(`./api/auth/status?id=${encodeURIComponent(user.id || '')}&phone=${encodeURIComponent(user.phone || '')}&tjId=${encodeURIComponent(tjParam)}`)
+        .then(r => r.ok ? r.json() : null)
+        .then(data => {
+          if (data && data.status === 'APPROVED' && data.user) {
+            if (this.checkInterval) {
+              clearInterval(this.checkInterval);
+              this.checkInterval = null;
+            }
+            setCurrentUser(data.user);
+            const modal = document.getElementById('pendingModal');
+            if (modal) modal.classList.remove('active');
+            this.grantAccess(data.user);
+            const isEn = window.I18N && window.I18N.getLang() === 'en';
+            showToastNotification(
+              isEn ? '🎉 Your account has been approved by admin! Welcome.' : '🎉 तुमचे खाते मंजूर झाले आहे! पोर्टल सुरु झाले.',
+              'success'
+            );
+          }
+        })
+        .catch(() => {});
     } else if (user.status === 'APPROVED') {
       this.grantAccess(user);
     }
@@ -1164,18 +1186,30 @@ window.AppState = AppState;
 // =============================================================================
 // 4. Market Hours & Autonomous Live Feed
 // =============================================================================
+const NSE_HOLIDAYS_SET = new Set([
+  '2026-01-26', '2026-02-18', '2026-03-03', '2026-03-26', '2026-04-03',
+  '2026-04-14', '2026-05-01', '2026-05-28', '2026-06-17', '2026-08-15',
+  '2026-09-16', '2026-10-02', '2026-10-20', '2026-10-21', '2026-11-08',
+  '2026-11-10', '2026-11-24', '2026-12-25'
+]);
+
 function isNseMarketOpen() {
-  const now = new Date();
-  const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
-  const ist = new Date(utc + (3600000 * 5.5));
-  const day = ist.getDay();
+  const istOffset = 19800000; // +05:30 in ms
+  const istDate = new Date(Date.now() + istOffset);
+  const day = istDate.getUTCDay(); // 0: Sun, 1: Mon, ..., 5: Fri, 6: Sat
   if (day === 0 || day === 6) return false;
-  const mins = ist.getHours() * 60 + ist.getMinutes();
+
+  const yyyy = istDate.getUTCFullYear();
+  const mm = String(istDate.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(istDate.getUTCDate()).padStart(2, '0');
+  if (NSE_HOLIDAYS_SET.has(`${yyyy}-${mm}-${dd}`)) return false;
+
+  const mins = istDate.getUTCHours() * 60 + istDate.getUTCMinutes();
   return mins >= 555 && mins <= 930; // 09:15 to 15:30 IST
 }
 
 function isCurrentMarketOpen() {
-  if (AppState.currentAsset.exchange === "MCX") {
+  if (AppState.currentAsset && AppState.currentAsset.exchange === "MCX") {
     return window.isMcxMarketOpen ? window.isMcxMarketOpen() : false;
   }
   return isNseMarketOpen();
@@ -1184,21 +1218,36 @@ function isCurrentMarketOpen() {
 function updateMarketStatusDisplay() {
   const label = document.getElementById('marketStatusLabel');
   if (!label) return;
+  const dot = label.parentElement ? label.parentElement.querySelector('.pulse-dot') : null;
   const now = new Date();
-  const timeStr = now.toLocaleTimeString('en-IN', { hour12: false });
+  const timeStr = now.toLocaleTimeString('en-IN', { hour12: false, timeZone: 'Asia/Kolkata' });
 
   if (isCurrentMarketOpen()) {
     const liveTxt = window.I18N ? I18N.t('market_live') : 'LIVE OPEN';
     label.textContent = `${timeStr} IST • ${liveTxt}`;
-    label.parentElement.style.background = '#ecfdf5';
-    label.parentElement.style.borderColor = '#a7f3d0';
-    label.parentElement.style.color = '#065f46';
+    if (label.parentElement) {
+      label.parentElement.style.background = '#ecfdf5';
+      label.parentElement.style.borderColor = '#a7f3d0';
+      label.parentElement.style.color = '#065f46';
+    }
+    if (dot) {
+      dot.style.background = '#089981';
+      dot.style.boxShadow = '0 0 0 0 rgba(8, 153, 129, 0.7)';
+      dot.style.animation = 'pulseGreen 1.8s infinite';
+    }
   } else {
     const closedTxt = window.I18N ? I18N.t('market_closed') : 'MARKET CLOSED';
     label.textContent = `${timeStr} IST • ${closedTxt}`;
-    label.parentElement.style.background = '#f1f5f9';
-    label.parentElement.style.borderColor = '#cbd5e1';
-    label.parentElement.style.color = '#64748b';
+    if (label.parentElement) {
+      label.parentElement.style.background = '#f1f5f9';
+      label.parentElement.style.borderColor = '#cbd5e1';
+      label.parentElement.style.color = '#64748b';
+    }
+    if (dot) {
+      dot.style.background = '#94a3b8';
+      dot.style.boxShadow = 'none';
+      dot.style.animation = 'none';
+    }
   }
 }
 
@@ -1334,7 +1383,7 @@ async function fetchLiveCandlesFromTradejini(asset, resetZoom = false) {
   const tf = AppState.currentTimeframe;
 
   try {
-    const days = tf === 'D' ? 60 : 7;
+    const days = (tf === 'W' || tf === 'M') ? 365 : (tf === 'D' ? 60 : 7);
     const res = await fetch(`./api/tradejini/candles?symbol=${encodeURIComponent(sym)}&interval=${tf}&days=${days}`);
     if (!res.ok) return;
     const data = await res.json();
@@ -1455,6 +1504,13 @@ function renderEChart(showAnimation = true) {
   const dates = candles.map(c => c.date);
   const closes = candles.map(c => c.close);
 
+  // Append 25 future empty slots to x-axis so dragging chart left reveals open canvas on the right
+  const RIGHT_MARGIN_PADDING = Math.max(25, Math.floor(candles.length * 0.15));
+  const paddedDates = [...dates];
+  for (let p = 0; p < RIGHT_MARGIN_PADDING; p++) {
+    paddedDates.push("");
+  }
+
   // Candlestick Data: Pure Japanese Candlestick vs Heikin Ashi
   let chartOhlc = [];
   if (AppState.chartType === "heikinashi") {
@@ -1486,104 +1542,242 @@ function renderEChart(showAnimation = true) {
   // Update Status Strip with latest candle
   updateOHLCDisplay(candles[candles.length - 1], rsiValues[rsiValues.length - 1], rsiMa[rsiMa.length - 1]);
 
-  const hasRsi = AppState.indicators.rsi;
+  const hasRsi = Boolean(AppState.indicators.rsi);
+  const hasVol = Boolean(AppState.indicators.vol);
 
-  // Grid layouts for Main Chart vs RSI Subpane
-  const grid = hasRsi ? [
-    { left: '45px', right: '55px', top: '25px', height: '62%' },
-    { left: '45px', right: '55px', top: '75%', height: '18%' }
-  ] : [
-    { left: '45px', right: '55px', top: '25px', height: '82%' }
-  ];
+  // Multi-pane Layout: Separate Candlesticks, Volume, and RSI so they NEVER overlap
+  // Grid 0: Price Action / Candlesticks
+  // Grid 1: Volume Sub-pane (completely separated from candles)
+  // Grid 2: RSI Sub-pane (if enabled)
+  let grid = [];
+  let xAxis = [];
+  let yAxis = [];
 
-  const xAxis = hasRsi ? [
-    {
-      type: 'category',
-      data: dates,
-      scale: true,
-      boundaryGap: true,
-      axisLine: { lineStyle: { color: '#e2e8f0' } },
-      axisLabel: { color: '#64748b', fontSize: 10 },
-      splitLine: { show: true, lineStyle: { color: '#f1f5f9' } },
-      min: 'dataMin',
-      max: 'dataMax'
-    },
-    {
-      type: 'category',
-      gridIndex: 1,
-      data: dates,
-      scale: true,
-      boundaryGap: true,
-      axisLine: { lineStyle: { color: '#e2e8f0' } },
-      axisLabel: { show: false },
-      splitLine: { show: true, lineStyle: { color: '#f1f5f9' } },
-      min: 'dataMin',
-      max: 'dataMax'
-    }
-  ] : [
-    {
-      type: 'category',
-      data: dates,
-      scale: true,
-      boundaryGap: true,
-      axisLine: { lineStyle: { color: '#e2e8f0' } },
-      axisLabel: { color: '#64748b', fontSize: 10 },
-      splitLine: { show: true, lineStyle: { color: '#f1f5f9' } },
-      min: 'dataMin',
-      max: 'dataMax'
-    }
-  ];
-
-  const yAxis = hasRsi ? [
-    {
-      scale: true,
-      position: 'right',
-      axisLine: { lineStyle: { color: '#e2e8f0' } },
-      axisLabel: { color: '#64748b', fontSize: 10 },
-      splitLine: { show: true, lineStyle: { color: '#f1f5f9' } }
-    },
-    {
-      scale: true,
-      gridIndex: 1,
-      position: 'right',
-      min: 0,
-      max: 100,
-      splitNumber: 2,
-      axisLine: { lineStyle: { color: '#e2e8f0' } },
-      axisLabel: { color: '#64748b', fontSize: 9 },
-      splitLine: { show: true, lineStyle: { color: '#f1f5f9' } }
-    },
-    {
-      scale: false,
-      min: 0,
-      gridIndex: 0,
-      show: false,
-      max: function(v) { return Math.max(v.max * 4, 1000); }
-    }
-  ] : [
-    {
-      scale: true,
-      position: 'right',
-      axisLine: { lineStyle: { color: '#e2e8f0' } },
-      axisLabel: { color: '#64748b', fontSize: 10 },
-      splitLine: { show: true, lineStyle: { color: '#f1f5f9' } }
-    },
-    {
-      scale: false,
-      min: 0,
-      gridIndex: 0,
-      show: false,
-      max: function(v) { return Math.max(v.max * 4, 1000); }
-    }
-  ];
+  if (hasRsi && hasVol) {
+    grid = [
+      { left: '45px', right: '55px', top: '25px', height: '52%' }, // Price
+      { left: '45px', right: '55px', top: '61%', height: '14%' }, // Volume
+      { left: '45px', right: '55px', top: '79%', height: '16%' }  // RSI
+    ];
+    xAxis = [
+      {
+        type: 'category',
+        gridIndex: 0,
+        data: paddedDates,
+        scale: true,
+        boundaryGap: true,
+        axisLine: { lineStyle: { color: '#e2e8f0' } },
+        axisLabel: { show: false },
+        splitLine: { show: true, lineStyle: { color: '#f1f5f9' } },
+        min: 'dataMin',
+        max: 'dataMax'
+      },
+      {
+        type: 'category',
+        gridIndex: 1,
+        data: paddedDates,
+        scale: true,
+        boundaryGap: true,
+        axisLine: { lineStyle: { color: '#e2e8f0' } },
+        axisLabel: { show: false },
+        splitLine: { show: true, lineStyle: { color: '#f1f5f9' } },
+        min: 'dataMin',
+        max: 'dataMax'
+      },
+      {
+        type: 'category',
+        gridIndex: 2,
+        data: paddedDates,
+        scale: true,
+        boundaryGap: true,
+        axisLine: { lineStyle: { color: '#e2e8f0' } },
+        axisLabel: { color: '#64748b', fontSize: 10 },
+        splitLine: { show: true, lineStyle: { color: '#f1f5f9' } },
+        min: 'dataMin',
+        max: 'dataMax'
+      }
+    ];
+    yAxis = [
+      {
+        gridIndex: 0,
+        scale: true,
+        position: 'right',
+        axisLine: { lineStyle: { color: '#e2e8f0' } },
+        axisLabel: { color: '#64748b', fontSize: 10 },
+        splitLine: { show: true, lineStyle: { color: '#f1f5f9' } }
+      },
+      {
+        gridIndex: 1,
+        scale: false,
+        position: 'right',
+        min: 0,
+        splitNumber: 2,
+        axisLine: { lineStyle: { color: '#e2e8f0' } },
+        axisLabel: {
+          color: '#94a3b8',
+          fontSize: 9,
+          formatter: v => v >= 1000000 ? (v / 1000000).toFixed(1) + 'M' : (v >= 1000 ? (v / 1000).toFixed(0) + 'K' : v)
+        },
+        splitLine: { show: true, lineStyle: { color: '#f8fafc' } }
+      },
+      {
+        gridIndex: 2,
+        scale: true,
+        position: 'right',
+        min: 0,
+        max: 100,
+        splitNumber: 2,
+        axisLine: { lineStyle: { color: '#e2e8f0' } },
+        axisLabel: { color: '#64748b', fontSize: 9 },
+        splitLine: { show: true, lineStyle: { color: '#f1f5f9' } }
+      }
+    ];
+  } else if (hasVol && !hasRsi) {
+    grid = [
+      { left: '45px', right: '55px', top: '25px', height: '68%' }, // Price
+      { left: '45px', right: '55px', top: '75%', height: '19%' }  // Volume
+    ];
+    xAxis = [
+      {
+        type: 'category',
+        gridIndex: 0,
+        data: paddedDates,
+        scale: true,
+        boundaryGap: true,
+        axisLine: { lineStyle: { color: '#e2e8f0' } },
+        axisLabel: { show: false },
+        splitLine: { show: true, lineStyle: { color: '#f1f5f9' } },
+        min: 'dataMin',
+        max: 'dataMax'
+      },
+      {
+        type: 'category',
+        gridIndex: 1,
+        data: paddedDates,
+        scale: true,
+        boundaryGap: true,
+        axisLine: { lineStyle: { color: '#e2e8f0' } },
+        axisLabel: { color: '#64748b', fontSize: 10 },
+        splitLine: { show: true, lineStyle: { color: '#f1f5f9' } },
+        min: 'dataMin',
+        max: 'dataMax'
+      }
+    ];
+    yAxis = [
+      {
+        gridIndex: 0,
+        scale: true,
+        position: 'right',
+        axisLine: { lineStyle: { color: '#e2e8f0' } },
+        axisLabel: { color: '#64748b', fontSize: 10 },
+        splitLine: { show: true, lineStyle: { color: '#f1f5f9' } }
+      },
+      {
+        gridIndex: 1,
+        scale: false,
+        position: 'right',
+        min: 0,
+        splitNumber: 2,
+        axisLine: { lineStyle: { color: '#e2e8f0' } },
+        axisLabel: {
+          color: '#94a3b8',
+          fontSize: 9,
+          formatter: v => v >= 1000000 ? (v / 1000000).toFixed(1) + 'M' : (v >= 1000 ? (v / 1000).toFixed(0) + 'K' : v)
+        },
+        splitLine: { show: true, lineStyle: { color: '#f8fafc' } }
+      }
+    ];
+  } else if (!hasVol && hasRsi) {
+    grid = [
+      { left: '45px', right: '55px', top: '25px', height: '65%' }, // Price
+      { left: '45px', right: '55px', top: '75%', height: '19%' }  // RSI
+    ];
+    xAxis = [
+      {
+        type: 'category',
+        gridIndex: 0,
+        data: paddedDates,
+        scale: true,
+        boundaryGap: true,
+        axisLine: { lineStyle: { color: '#e2e8f0' } },
+        axisLabel: { show: false },
+        splitLine: { show: true, lineStyle: { color: '#f1f5f9' } },
+        min: 'dataMin',
+        max: 'dataMax'
+      },
+      {
+        type: 'category',
+        gridIndex: 1,
+        data: paddedDates,
+        scale: true,
+        boundaryGap: true,
+        axisLine: { lineStyle: { color: '#e2e8f0' } },
+        axisLabel: { color: '#64748b', fontSize: 10 },
+        splitLine: { show: true, lineStyle: { color: '#f1f5f9' } },
+        min: 'dataMin',
+        max: 'dataMax'
+      }
+    ];
+    yAxis = [
+      {
+        gridIndex: 0,
+        scale: true,
+        position: 'right',
+        axisLine: { lineStyle: { color: '#e2e8f0' } },
+        axisLabel: { color: '#64748b', fontSize: 10 },
+        splitLine: { show: true, lineStyle: { color: '#f1f5f9' } }
+      },
+      {
+        gridIndex: 1,
+        scale: true,
+        position: 'right',
+        min: 0,
+        max: 100,
+        splitNumber: 2,
+        axisLine: { lineStyle: { color: '#e2e8f0' } },
+        axisLabel: { color: '#64748b', fontSize: 9 },
+        splitLine: { show: true, lineStyle: { color: '#f1f5f9' } }
+      }
+    ];
+  } else {
+    grid = [
+      { left: '45px', right: '55px', top: '25px', height: '84%' }
+    ];
+    xAxis = [
+      {
+        type: 'category',
+        gridIndex: 0,
+        data: paddedDates,
+        scale: true,
+        boundaryGap: true,
+        axisLine: { lineStyle: { color: '#e2e8f0' } },
+        axisLabel: { color: '#64748b', fontSize: 10 },
+        splitLine: { show: true, lineStyle: { color: '#f1f5f9' } },
+        min: 'dataMin',
+        max: 'dataMax'
+      }
+    ];
+    yAxis = [
+      {
+        gridIndex: 0,
+        scale: true,
+        position: 'right',
+        axisLine: { lineStyle: { color: '#e2e8f0' } },
+        axisLabel: { color: '#64748b', fontSize: 10 },
+        splitLine: { show: true, lineStyle: { color: '#f1f5f9' } }
+      }
+    ];
+  }
 
   const series = [];
 
-  // 1. Candlestick / Line Series
+  // 1. Candlestick / Real Line Series
   if (AppState.chartType === "candlestick" || AppState.chartType === "heikinashi") {
     series.push({
       name: AppState.currentAsset.symbol,
       type: 'candlestick',
+      xAxisIndex: 0,
+      yAxisIndex: 0,
       data: chartOhlc,
       itemStyle: {
         color: '#089981',
@@ -1593,13 +1787,35 @@ function renderEChart(showAnimation = true) {
       }
     });
   } else {
+    // Professional Financial Area Line Chart (TradingView style)
     series.push({
       name: AppState.currentAsset.symbol,
       type: 'line',
+      xAxisIndex: 0,
+      yAxisIndex: 0,
       data: closes,
-      smooth: true,
-      lineStyle: { color: '#2563eb', width: 2 },
-      itemStyle: { color: '#2563eb' }
+      smooth: 0.15,
+      showSymbol: false,
+      lineStyle: {
+        color: '#2563eb',
+        width: 2.2,
+        shadowColor: 'rgba(37, 99, 235, 0.2)',
+        shadowBlur: 6
+      },
+      areaStyle: {
+        color: {
+          type: 'linear',
+          x: 0,
+          y: 0,
+          x2: 0,
+          y2: 1,
+          colorStops: [
+            { offset: 0, color: 'rgba(37, 99, 235, 0.28)' },
+            { offset: 0.7, color: 'rgba(37, 99, 235, 0.05)' },
+            { offset: 1, color: 'rgba(37, 99, 235, 0.0)' }
+          ]
+        }
+      }
     });
   }
 
@@ -1608,6 +1824,8 @@ function renderEChart(showAnimation = true) {
     series.push({
       name: 'MA(20)',
       type: 'line',
+      xAxisIndex: 0,
+      yAxisIndex: 0,
       data: ma20,
       smooth: true,
       showSymbol: false,
@@ -1615,15 +1833,15 @@ function renderEChart(showAnimation = true) {
     });
   }
 
-  // 3. Volume Overlay Bars (TradingView Style)
-  if (AppState.indicators.vol) {
+  // 3. Separated Volume Sub-pane Series (Completely below Candlesticks)
+  if (hasVol) {
     const volData = candles.map((c) => {
       const isUp = c.close >= c.open;
       const rawVol = (typeof c.volume === 'number' && c.volume > 0) ? c.volume : 0;
       return {
         value: rawVol,
         itemStyle: {
-          color: isUp ? 'rgba(8, 153, 129, 0.4)' : 'rgba(242, 54, 69, 0.4)',
+          color: isUp ? 'rgba(8, 153, 129, 0.5)' : 'rgba(242, 54, 69, 0.5)',
           borderColor: isUp ? '#089981' : '#f23645',
           borderWidth: 1
         }
@@ -1633,21 +1851,21 @@ function renderEChart(showAnimation = true) {
     series.push({
       name: 'Volume',
       type: 'bar',
-      xAxisIndex: 0,
-      yAxisIndex: hasRsi ? 2 : 1,
+      xAxisIndex: 1,
+      yAxisIndex: 1,
       data: volData,
-      barMaxWidth: 14,
-      z: 1
+      barMaxWidth: 12
     });
   }
 
-  // 4. RSI Subpane Series
+  // 4. RSI Sub-pane Series
   if (hasRsi) {
+    const rsiIdx = hasVol ? 2 : 1;
     series.push({
       name: `RSI(${AppState.rsiSettings.length})`,
       type: 'line',
-      xAxisIndex: 1,
-      yAxisIndex: 1,
+      xAxisIndex: rsiIdx,
+      yAxisIndex: rsiIdx,
       data: rsiValues,
       showSymbol: false,
       lineStyle: { color: '#7c3aed', width: 1.5 },
@@ -1665,28 +1883,36 @@ function renderEChart(showAnimation = true) {
     series.push({
       name: `RSI MA(${AppState.rsiSettings.maLength})`,
       type: 'line',
-      xAxisIndex: 1,
-      yAxisIndex: 1,
+      xAxisIndex: rsiIdx,
+      yAxisIndex: rsiIdx,
       data: rsiMa,
       showSymbol: false,
       lineStyle: { color: '#2563eb', width: 1.2 }
     });
   }
 
-  const defaultStart = Math.max(0, 100 - Math.min(candles.length, 75) * 100 / candles.length);
-  let currentStart = defaultStart;
-  let currentEnd = 100;
+  // Calculate Zoom: Show candles near right edge while allowing dragging left into empty canvas
+  const totalSlots = paddedDates.length;
+  const candleSlots = candles.length;
+  const targetVisibleBars = Math.min(candleSlots, 70);
+  const defaultEndPct = Math.min(100, Math.round((candleSlots / totalSlots) * 100) + 4);
+  const defaultStartPct = Math.max(0, defaultEndPct - Math.round((targetVisibleBars / totalSlots) * 100));
+
+  let currentStart = defaultStartPct;
+  let currentEnd = defaultEndPct;
 
   if (AppState.chart && !AppState._zoomNeedsReset) {
     try {
       const opt = AppState.chart.getOption();
       if (opt && opt.dataZoom && opt.dataZoom[0]) {
-        currentStart = (typeof opt.dataZoom[0].start === 'number') ? opt.dataZoom[0].start : defaultStart;
-        currentEnd = (typeof opt.dataZoom[0].end === 'number') ? opt.dataZoom[0].end : 100;
+        currentStart = (typeof opt.dataZoom[0].start === 'number') ? opt.dataZoom[0].start : defaultStartPct;
+        currentEnd = (typeof opt.dataZoom[0].end === 'number') ? opt.dataZoom[0].end : defaultEndPct;
       }
     } catch (e) {}
   }
   AppState._zoomNeedsReset = false;
+
+  const allXIndices = xAxis.map((_, i) => i);
 
   const option = {
     animation: showAnimation,
@@ -1715,6 +1941,7 @@ function renderEChart(showAnimation = true) {
       formatter: function(params) {
         if (!params || params.length === 0) return '';
         const dataIdx = params[0].dataIndex;
+        if (dataIdx >= candles.length) return ''; // Empty right-margin slot
         const c = AppState.liveCandles && AppState.liveCandles[dataIdx];
         if (!c) return '';
 
@@ -1724,6 +1951,7 @@ function renderEChart(showAnimation = true) {
         // Dynamically update the top status strip as cursor glides across candles
         updateOHLCDisplay(c, rsi, rm);
 
+        const isLine = AppState.chartType === 'line';
         const isHa = AppState.chartType === 'heikinashi' && c.haOpen != null;
         const dispOpen = isHa ? c.haOpen : c.open;
         const dispHigh = isHa ? c.haHigh : c.high;
@@ -1744,12 +1972,18 @@ function renderEChart(showAnimation = true) {
             '<span style="font-weight:700; color:#1e293b; font-size:12px;">📅 ' + fDate + '</span>' +
             '<span style="background:#eff6ff; color:#1d4ed8; font-weight:700; font-size:11px; padding:2px 6px; border-radius:4px; border:1px solid #bfdbfe;">⏰ ' + tStr + '</span>' +
           '</div>' +
-          '<div style="display:grid; grid-template-columns:1fr 1fr; gap:4px 12px; font-size:11px; margin-bottom:6px;">' +
-            '<div><span style="color:#64748b;">' + lblPrefix + 'Open:</span> <strong style="color:#0f172a;">' + dispOpen.toFixed(2) + '</strong></div>' +
-            '<div><span style="color:#64748b;">' + lblPrefix + 'High:</span> <strong style="color:#089981;">' + dispHigh.toFixed(2) + '</strong></div>' +
-            '<div><span style="color:#64748b;">' + lblPrefix + 'Low:</span> <strong style="color:#f23645;">' + dispLow.toFixed(2) + '</strong></div>' +
-            '<div><span style="color:#64748b;">' + lblPrefix + 'Close:</span> <strong style="color:' + color + '; font-weight:700;">' + dispClose.toFixed(2) + '</strong></div>' +
-          '</div>' +
+          (isLine ? (
+            '<div style="padding:4px 0 6px 0; font-size:13px; font-weight:800; color:#2563eb;">' +
+              'Price: ₹' + dispClose.toFixed(2) +
+            '</div>'
+          ) : (
+            '<div style="display:grid; grid-template-columns:1fr 1fr; gap:4px 12px; font-size:11px; margin-bottom:6px;">' +
+              '<div><span style="color:#64748b;">' + lblPrefix + 'Open:</span> <strong style="color:#0f172a;">' + dispOpen.toFixed(2) + '</strong></div>' +
+              '<div><span style="color:#64748b;">' + lblPrefix + 'High:</span> <strong style="color:#089981;">' + dispHigh.toFixed(2) + '</strong></div>' +
+              '<div><span style="color:#64748b;">' + lblPrefix + 'Low:</span> <strong style="color:#f23645;">' + dispLow.toFixed(2) + '</strong></div>' +
+              '<div><span style="color:#64748b;">' + lblPrefix + 'Close:</span> <strong style="color:' + color + '; font-weight:700;">' + dispClose.toFixed(2) + '</strong></div>' +
+            '</div>'
+          )) +
           '<div style="display:flex; justify-content:space-between; font-size:11px; padding-top:4px; border-top:1px dashed #e2e8f0;">' +
             '<span><span style="color:#64748b;">Change:</span> <strong style="color:' + color + ';">' + sign + diff + ' (' + sign + pct + '%)</strong></span>' +
             '<span><span style="color:#64748b;">Vol:</span> <strong>' + (c.volume || 0).toLocaleString('en-IN') + '</strong></span>' +
@@ -1769,7 +2003,7 @@ function renderEChart(showAnimation = true) {
     dataZoom: [
       {
         type: 'inside',
-        xAxisIndex: hasRsi ? [0, 1] : [0],
+        xAxisIndex: allXIndices,
         start: currentStart,
         end: currentEnd,
         zoomOnMouseWheel: true,
@@ -1779,7 +2013,7 @@ function renderEChart(showAnimation = true) {
       },
       {
         type: 'slider',
-        xAxisIndex: hasRsi ? [0, 1] : [0],
+        xAxisIndex: allXIndices,
         bottom: 2,
         height: 16,
         borderColor: '#cbd5e1',

@@ -173,12 +173,19 @@ const TradeSetupModule = (function () {
   function scanStrategy() {
     const isEn = window.I18N && window.I18N.getLang() === 'en';
     const container = document.getElementById('tsSignalsContainer');
+    const btnScan = document.getElementById('tsBtnScanNow');
+
+    if (btnScan) {
+      btnScan.disabled = true;
+      btnScan.innerHTML = `<span style="display:inline-block; animation: spin 0.8s linear infinite;">⏳</span> <span>${isEn ? 'Scanning...' : 'स्कॅनिंग चालू आहे...'}</span>`;
+    }
+
     if (container && (!state.signals || state.signals.length === 0)) {
       container.innerHTML = `
-        <div class="ts-empty-state">
-          <div class="ts-empty-icon">⏳</div>
-          <h3>${isEn ? 'Tradejini CubePlus Live 5-Minute Heikin Ashi Scanning...' : 'Tradejini CubePlus Live 5-Minute Heikin Ashi स्कॅनिंग चालू आहे...'}</h3>
-          <p>${isEn ? 'Please wait — real-time setups are being verified from the live broker datafeed.' : 'कृपया प्रतीक्षा करा — थेट ब्रोकर डेटाफीडवरून रिअल-टाइम सेटअप तपासले जात आहेत.'}</p>
+        <div class="ts-empty-state" style="padding: 48px 20px; text-align: center;">
+          <div class="ts-loading-spinner" style="width: 44px; height: 44px; border: 4px solid #e2e8f0; border-top-color: #2563eb; border-radius: 50%; margin: 0 auto 16px; animation: spin 0.8s linear infinite;"></div>
+          <h3 style="font-size: 16px; font-weight: 700; color: #1e293b; margin-bottom: 6px;">${isEn ? 'Scanning Real 5-Minute Heikin Ashi Setups...' : 'Tradejini CubePlus Live 5-Minute Heikin Ashi स्कॅनिंग चालू आहे...'}</h3>
+          <p style="font-size: 13px; color: #64748b; max-width: 480px; margin: 0 auto;">${isEn ? 'Connecting to live broker feed and computing confirmation candles...' : 'कृपया प्रतीक्षा करा — थेट ब्रोकर डेटाफीडवरून रिअल-टाइम सेटअप तपासले जात आहेत.'}</p>
         </div>
       `;
     }
@@ -205,10 +212,19 @@ const TradeSetupModule = (function () {
             state.signals = data.signals;
             filterAndRenderSignals();
           }
+        } else {
+          filterAndRenderSignals();
         }
       })
       .catch(err => {
         console.warn('[TradeSetup] Live Tradejini scan error:', err);
+        filterAndRenderSignals();
+      })
+      .finally(() => {
+        if (btnScan) {
+          btnScan.disabled = false;
+          btnScan.innerHTML = `<span>⚡</span> <span>${isEn ? 'Scan Now' : 'आत्ता स्कॅन करा'}</span>`;
+        }
       });
   }
 
@@ -695,48 +711,7 @@ const TradeSetupModule = (function () {
     const btnScan = document.getElementById('tsBtnScanNow');
     if (btnScan) {
       btnScan.addEventListener('click', () => {
-        const isEn = window.I18N && window.I18N.getLang() === 'en';
-        btnScan.innerHTML = `<span>⏳</span><span>${isEn ? 'Scanning...' : 'स्कॅनिंग चालू आहे...'}</span>`;
-        btnScan.disabled = true;
-        setTimeout(() => {
-          scanStrategy();
-          btnScan.innerHTML = `<span>⚡</span><span>${isEn ? 'Scan Now' : 'आत्ता स्कॅन करा'}</span>`;
-          btnScan.disabled = false;
-        }, 600);
-      });
-    }
-
-    const btnDemo = document.getElementById('tsBtnTestAlert');
-    if (btnDemo) {
-      btnDemo.addEventListener('click', () => {
-        if (state.signals && state.signals.length > 0) {
-          const liveSig = state.signals[0];
-          playAlertSound(liveSig.Type);
-          triggerBrowserNotification(liveSig);
-          showSignalModal(liveSig);
-        } else {
-          const niftyIdx = (state.indices && state.indices[0]) || { Name: 'NIFTY 50', LTP: 22703.30, ATM: '22700 CE' };
-          const ltp = Number(niftyIdx.LTP || 22703.30);
-          const isEn = window.I18N && window.I18N.getLang() === 'en';
-          const demo = {
-            Id: `LIVE_TEST_${Date.now()}`,
-            Symbol: niftyIdx.Name || 'NIFTY 50',
-            Type: 'BUY',
-            Category: 'INDEX',
-            Time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
-            LTP: ltp,
-            ATM: niftyIdx.ATM || `${Math.round(ltp / 50) * 50} CE`,
-            Entry: ltp,
-            StopLoss: Number((ltp - 30).toFixed(2)),
-            Target1: Number((ltp + 45).toFixed(2)),
-            Target2: Number((ltp + 75).toFixed(2)),
-            RiskPoints: 30,
-            CCPosition: isEn ? '1st Green HA Candle (Flat Bottom CC)' : '१ ली हिरवी HA कॅन्डल (Flat Bottom CC)'
-          };
-          playAlertSound('BUY');
-          triggerBrowserNotification(demo);
-          showSignalModal(demo);
-        }
+        scanStrategy();
       });
     }
 

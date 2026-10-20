@@ -96,10 +96,6 @@
       </div>
     </div>
 
-    <!-- Header Search Bar -->
-    <div class="header-search-wrap">
-      <input type="text" id="header-stock-search" class="header-stock-search" placeholder="🔍 स्टॉक्स / MCX सर्च करा..." data-i18n-placeholder="search_placeholder" />
-    </div>
 
     <!-- Header Actions -->
     <div class="header-actions">
@@ -195,6 +191,8 @@
                 <button class="tf-btn" data-tf="15" data-i18n="tf_15m">15m</button>
                 <button class="tf-btn" data-tf="60" data-i18n="tf_1h">1h</button>
                 <button class="tf-btn" data-tf="D" data-i18n="tf_1d">1D</button>
+                <button class="tf-btn" data-tf="W" data-i18n="tf_1w">1W</button>
+                <button class="tf-btn" data-tf="M" data-i18n="tf_1m_month">1M</button>
               </div>
 
               <!-- Chart Style Selector -->
@@ -329,20 +327,13 @@
 
         <div class="ts-actions-group">
           <button id="tsBtnAudioToggle" class="ts-btn-secondary active">
-            <span>🔊</span>
             <span class="ts-audio-text" data-i18n="ts_audio_on">🔊 ध्वनी चालू</span>
           </button>
           <button id="tsBtnNotifToggle" class="ts-btn-secondary">
-            <span>🔔</span>
             <span class="ts-notif-text" data-i18n="ts_notif_btn">🔔 ॲलर्ट परवानगी</span>
           </button>
           <button id="tsBtnScanNow" class="ts-btn-primary">
-            <span>⚡</span>
             <span data-i18n="ts_scan_btn">⚡ आत्ता स्कॅन करा</span>
-          </button>
-          <button id="tsBtnTestAlert" class="ts-btn-secondary" style="background:#eff6ff; color:#1d4ed8; border-color:#bfdbfe;">
-            <span>🔔</span>
-            <span data-i18n="ts_demo_alert_btn">🔔 डेमो ॲलर्ट</span>
           </button>
         </div>
       </div>
@@ -442,8 +433,7 @@
         </div>
 
         <button id="aaaBtnScanNow" class="ts-btn-primary">
-          <span>⚡</span>
-          <span data-i18n="aaa_btn_scan">आता स्कॅन करा</span>
+          <span data-i18n="aaa_btn_scan">⚡ आता स्कॅन करा</span>
         </button>
       </div>
 
