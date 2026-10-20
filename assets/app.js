@@ -1163,10 +1163,7 @@ const AppState = {
   currentTimeframe: "5",
   chartType: "candlestick",
   indicators: {
-    ema9: true,
     ema21: true,
-    ema50: false,
-    ema200: false,
     rsi: true,
     vol: true
   },
@@ -1584,26 +1581,22 @@ function calculateSMA(data, period = 14) {
   return sma;
 }
 
-function calculateEMA(data, period = 9) {
+function calculateEMA(data, period = 21) {
   if (!data || data.length === 0) return [];
-  const ema = new Array(data.length).fill(null);
-  const p = Math.max(2, Math.min(period, data.length));
-  
-  let sum = 0;
-  for (let i = 0; i < p; i++) {
-    sum += (data[i] != null ? data[i] : 0);
-  }
-  let prevEma = sum / p;
-  ema[p - 1] = Number(prevEma.toFixed(2));
-
+  const n = data.length;
+  const ema = new Array(n);
   const k = 2 / (period + 1);
-  for (let i = p; i < data.length; i++) {
-    if (data[i] == null) {
+
+  let currentEma = (data[0] != null && !isNaN(data[0])) ? data[0] : 0;
+  ema[0] = Number(currentEma.toFixed(2));
+
+  for (let i = 1; i < n; i++) {
+    const val = data[i];
+    if (val == null || isNaN(val)) {
       ema[i] = ema[i - 1];
     } else {
-      const val = (data[i] - prevEma) * k + prevEma;
-      ema[i] = Number(val.toFixed(2));
-      prevEma = val;
+      currentEma = (val - currentEma) * k + currentEma;
+      ema[i] = Number(currentEma.toFixed(2));
     }
   }
   return ema;
@@ -1622,14 +1615,11 @@ function renderEChart(showAnimation = true) {
       if (AppState.liveCandles && AppState.liveCandles.length > 0) {
         const last = AppState.liveCandles[AppState.liveCandles.length - 1];
         const cl = AppState.liveCandles.map(x => x.close);
-        const e9 = calculateEMA(cl, 9);
         const e21 = calculateEMA(cl, 21);
-        const e50 = calculateEMA(cl, 50);
-        const e200 = calculateEMA(cl, 200);
         const rsiVals = calculateRSI(cl, AppState.rsiSettings.length);
         const rmVals = calculateSMA(rsiVals, AppState.rsiSettings.maLength);
         const li = cl.length - 1;
-        updateOHLCDisplay(last, rsiVals[li], rmVals[li], e9[li], e21[li], e50[li], e200[li]);
+        updateOHLCDisplay(last, rsiVals[li], rmVals[li], e21[li]);
       }
     });
   } else {
@@ -1642,10 +1632,10 @@ function renderEChart(showAnimation = true) {
   const dates = candles.map(c => c.date);
   const closes = candles.map(c => c.close);
 
-  // Append 150+ future empty slots so dragging chart left reveals wide open canvas on the right (TradingView style)
-  const RIGHT_MARGIN_PADDING = Math.max(150, Math.floor(candles.length * 2.0));
+  // Append empty slots so dragging chart left reveals wide open canvas on the right (TradingView style)
+  const EMPTY_SLOTS = Math.max(50, Math.floor(candles.length * 0.6));
   const paddedDates = [...dates];
-  for (let p = 0; p < RIGHT_MARGIN_PADDING; p++) {
+  for (let p = 0; p < EMPTY_SLOTS; p++) {
     paddedDates.push("");
   }
 
@@ -1672,25 +1662,54 @@ function renderEChart(showAnimation = true) {
     chartOhlc = candles.map(c => [c.open, c.close, c.low, c.high]);
   }
 
-  // Moving Averages & RSI for Current Timeframe
-  const ema9 = calculateEMA(closes, 9);
+  // Moving Average 21 & RSI for Current Timeframe (calculated continuously across all candles)
   const ema21 = calculateEMA(closes, 21);
-  const ema50 = calculateEMA(closes, 50);
-  const ema200 = calculateEMA(closes, 200);
   const rsiValues = calculateRSI(closes, AppState.rsiSettings.length);
   const rsiMa = calculateSMA(rsiValues, AppState.rsiSettings.maLength);
 
   // Update Status Strip with latest candle
   const lastBarIdx = candles.length - 1;
-  updateOHLCDisplay(candles[lastBarIdx], rsiValues[lastBarIdx], rsiMa[lastBarIdx], ema9[lastBarIdx], ema21[lastBarIdx], ema50[lastBarIdx], ema200[lastBarIdx]);
+  updateOHLCDisplay(candles[lastBarIdx], rsiValues[lastBarIdx], rsiMa[lastBarIdx], ema21[lastBarIdx]);
 
   const hasRsi = Boolean(AppState.indicators.rsi);
   const hasVol = Boolean(AppState.indicators.vol);
 
+  // Pad series data arrays with '-' so all series match paddedDates length exactly
+  const paddedOhlc = [...chartOhlc];
+  const paddedCloses = [...closes];
+  const paddedEma21 = [...ema21];
+  const paddedVol = [];
+  const paddedRsi = [...rsiValues];
+  const paddedRsiMa = [...rsiMa];
+
+  if (hasVol) {
+    for (let i = 0; i < candles.length; i++) {
+      const c = candles[i];
+      const isUp = c.close >= c.open;
+      const rawVol = (typeof c.volume === 'number' && c.volume > 0) ? c.volume : 0;
+      paddedVol.push({
+        value: rawVol,
+        itemStyle: {
+          color: isUp ? 'rgba(8, 153, 129, 0.5)' : 'rgba(242, 54, 69, 0.5)',
+          borderColor: isUp ? '#089981' : '#f23645',
+          borderWidth: 1
+        }
+      });
+    }
+  }
+
+  for (let p = 0; p < EMPTY_SLOTS; p++) {
+    paddedOhlc.push(['-', '-', '-', '-']);
+    paddedCloses.push('-');
+    paddedEma21.push('-');
+    if (hasVol) paddedVol.push({ value: '-' });
+    if (hasRsi) {
+      paddedRsi.push('-');
+      paddedRsiMa.push('-');
+    }
+  }
+
   // Multi-pane Layout: Separate Candlesticks, Volume, and RSI so they NEVER overlap
-  // Grid 0: Price Action / Candlesticks
-  // Grid 1: Volume Sub-pane (completely separated from candles)
-  // Grid 2: RSI Sub-pane (if enabled)
   let grid = [];
   let xAxis = [];
   let yAxis = [];
@@ -1710,9 +1729,7 @@ function renderEChart(showAnimation = true) {
         boundaryGap: true,
         axisLine: { lineStyle: { color: '#e2e8f0' } },
         axisLabel: { show: false },
-        splitLine: { show: true, lineStyle: { color: '#f1f5f9' } },
-        min: 'dataMin',
-        max: 'dataMax'
+        splitLine: { show: true, lineStyle: { color: '#f1f5f9' } }
       },
       {
         type: 'category',
@@ -1722,9 +1739,7 @@ function renderEChart(showAnimation = true) {
         boundaryGap: true,
         axisLine: { lineStyle: { color: '#e2e8f0' } },
         axisLabel: { show: false },
-        splitLine: { show: true, lineStyle: { color: '#f1f5f9' } },
-        min: 'dataMin',
-        max: 'dataMax'
+        splitLine: { show: true, lineStyle: { color: '#f1f5f9' } }
       },
       {
         type: 'category',
@@ -1733,10 +1748,12 @@ function renderEChart(showAnimation = true) {
         scale: true,
         boundaryGap: true,
         axisLine: { lineStyle: { color: '#e2e8f0' } },
-        axisLabel: { color: '#64748b', fontSize: 10 },
-        splitLine: { show: true, lineStyle: { color: '#f1f5f9' } },
-        min: 'dataMin',
-        max: 'dataMax'
+        axisLabel: {
+          color: '#64748b',
+          fontSize: 10,
+          formatter: (val, idx) => (idx < candles.length ? val : '')
+        },
+        splitLine: { show: true, lineStyle: { color: '#f1f5f9' } }
       }
     ];
     yAxis = [
@@ -1788,9 +1805,7 @@ function renderEChart(showAnimation = true) {
         boundaryGap: true,
         axisLine: { lineStyle: { color: '#e2e8f0' } },
         axisLabel: { show: false },
-        splitLine: { show: true, lineStyle: { color: '#f1f5f9' } },
-        min: 'dataMin',
-        max: 'dataMax'
+        splitLine: { show: true, lineStyle: { color: '#f1f5f9' } }
       },
       {
         type: 'category',
@@ -1799,10 +1814,12 @@ function renderEChart(showAnimation = true) {
         scale: true,
         boundaryGap: true,
         axisLine: { lineStyle: { color: '#e2e8f0' } },
-        axisLabel: { color: '#64748b', fontSize: 10 },
-        splitLine: { show: true, lineStyle: { color: '#f1f5f9' } },
-        min: 'dataMin',
-        max: 'dataMax'
+        axisLabel: {
+          color: '#64748b',
+          fontSize: 10,
+          formatter: (val, idx) => (idx < candles.length ? val : '')
+        },
+        splitLine: { show: true, lineStyle: { color: '#f1f5f9' } }
       }
     ];
     yAxis = [
@@ -1843,9 +1860,7 @@ function renderEChart(showAnimation = true) {
         boundaryGap: true,
         axisLine: { lineStyle: { color: '#e2e8f0' } },
         axisLabel: { show: false },
-        splitLine: { show: true, lineStyle: { color: '#f1f5f9' } },
-        min: 'dataMin',
-        max: 'dataMax'
+        splitLine: { show: true, lineStyle: { color: '#f1f5f9' } }
       },
       {
         type: 'category',
@@ -1854,10 +1869,12 @@ function renderEChart(showAnimation = true) {
         scale: true,
         boundaryGap: true,
         axisLine: { lineStyle: { color: '#e2e8f0' } },
-        axisLabel: { color: '#64748b', fontSize: 10 },
-        splitLine: { show: true, lineStyle: { color: '#f1f5f9' } },
-        min: 'dataMin',
-        max: 'dataMax'
+        axisLabel: {
+          color: '#64748b',
+          fontSize: 10,
+          formatter: (val, idx) => (idx < candles.length ? val : '')
+        },
+        splitLine: { show: true, lineStyle: { color: '#f1f5f9' } }
       }
     ];
     yAxis = [
@@ -1893,10 +1910,12 @@ function renderEChart(showAnimation = true) {
         scale: true,
         boundaryGap: true,
         axisLine: { lineStyle: { color: '#e2e8f0' } },
-        axisLabel: { color: '#64748b', fontSize: 10 },
-        splitLine: { show: true, lineStyle: { color: '#f1f5f9' } },
-        min: 'dataMin',
-        max: 'dataMax'
+        axisLabel: {
+          color: '#64748b',
+          fontSize: 10,
+          formatter: (val, idx) => (idx < candles.length ? val : '')
+        },
+        splitLine: { show: true, lineStyle: { color: '#f1f5f9' } }
       }
     ];
     yAxis = [
@@ -1920,7 +1939,7 @@ function renderEChart(showAnimation = true) {
       type: 'candlestick',
       xAxisIndex: 0,
       yAxisIndex: 0,
-      data: chartOhlc,
+      data: paddedOhlc,
       itemStyle: {
         color: '#089981',
         color0: '#f23645',
@@ -1935,7 +1954,7 @@ function renderEChart(showAnimation = true) {
       type: 'line',
       xAxisIndex: 0,
       yAxisIndex: 0,
-      data: closes,
+      data: paddedCloses,
       smooth: 0.15,
       showSymbol: false,
       lineStyle: {
@@ -1961,77 +1980,28 @@ function renderEChart(showAnimation = true) {
     });
   }
 
-  // 2. Exponential Moving Averages (EMA 9, 21, 50, 200)
-  if (AppState.indicators.ema9) {
-    series.push({
-      name: 'EMA(9)',
-      type: 'line',
-      xAxisIndex: 0,
-      yAxisIndex: 0,
-      data: ema9,
-      smooth: 0.1,
-      showSymbol: false,
-      lineStyle: { color: '#2563eb', width: 1.5 }
-    });
-  }
+  // 2. Exponential Moving Average 21 (Single primary EMA indicator)
   if (AppState.indicators.ema21) {
     series.push({
       name: 'EMA(21)',
       type: 'line',
       xAxisIndex: 0,
       yAxisIndex: 0,
-      data: ema21,
+      data: paddedEma21,
       smooth: 0.1,
       showSymbol: false,
-      lineStyle: { color: '#f59e0b', width: 1.5 }
-    });
-  }
-  if (AppState.indicators.ema50) {
-    series.push({
-      name: 'EMA(50)',
-      type: 'line',
-      xAxisIndex: 0,
-      yAxisIndex: 0,
-      data: ema50,
-      smooth: 0.1,
-      showSymbol: false,
-      lineStyle: { color: '#8b5cf6', width: 1.6 }
-    });
-  }
-  if (AppState.indicators.ema200) {
-    series.push({
-      name: 'EMA(200)',
-      type: 'line',
-      xAxisIndex: 0,
-      yAxisIndex: 0,
-      data: ema200,
-      smooth: 0.1,
-      showSymbol: false,
-      lineStyle: { color: '#dc2626', width: 1.8 }
+      lineStyle: { color: '#f59e0b', width: 1.8 }
     });
   }
 
   // 3. Separated Volume Sub-pane Series (Completely below Candlesticks)
   if (hasVol) {
-    const volData = candles.map((c) => {
-      const isUp = c.close >= c.open;
-      const rawVol = (typeof c.volume === 'number' && c.volume > 0) ? c.volume : 0;
-      return {
-        value: rawVol,
-        itemStyle: {
-          color: isUp ? 'rgba(8, 153, 129, 0.5)' : 'rgba(242, 54, 69, 0.5)',
-          borderColor: isUp ? '#089981' : '#f23645',
-          borderWidth: 1
-        }
-      };
-    });
-
     series.push({
       name: 'Volume',
       type: 'bar',
       xAxisIndex: 1,
       yAxisIndex: 1,
-      data: volData,
+      data: paddedVol,
       barMaxWidth: 12
     });
   }
@@ -2044,7 +2014,7 @@ function renderEChart(showAnimation = true) {
       type: 'line',
       xAxisIndex: rsiIdx,
       yAxisIndex: rsiIdx,
-      data: rsiValues,
+      data: paddedRsi,
       showSymbol: false,
       lineStyle: { color: '#7c3aed', width: 1.5 },
       markLine: {
@@ -2063,7 +2033,7 @@ function renderEChart(showAnimation = true) {
       type: 'line',
       xAxisIndex: rsiIdx,
       yAxisIndex: rsiIdx,
-      data: rsiMa,
+      data: paddedRsiMa,
       showSymbol: false,
       lineStyle: { color: '#2563eb', width: 1.2 }
     });
@@ -2072,10 +2042,13 @@ function renderEChart(showAnimation = true) {
   // Calculate Zoom: Show candles near right edge while allowing dragging left into empty canvas
   const totalSlots = paddedDates.length;
   const candleSlots = candles.length;
-  const targetVisibleBars = Math.min(candleSlots, 60);
-  const visibleEndSlot = Math.min(totalSlots, candleSlots + 6);
-  const defaultEndPct = Number(((visibleEndSlot / totalSlots) * 100).toFixed(1));
-  const defaultStartPct = Math.max(0, Number((defaultEndPct - ((targetVisibleBars / totalSlots) * 100)).toFixed(1)));
+  const rightMarginBars = 6;
+  const targetVisibleBars = Math.min(candleSlots, 45);
+  const initialEndSlot = Math.min(totalSlots - 1, (candleSlots - 1) + rightMarginBars);
+  const initialStartSlot = Math.max(0, initialEndSlot - targetVisibleBars);
+
+  const defaultEndPct = Number(((initialEndSlot / (totalSlots - 1)) * 100).toFixed(1));
+  const defaultStartPct = Math.max(0, Number(((initialStartSlot / (totalSlots - 1)) * 100).toFixed(1)));
 
   let currentStart = defaultStartPct;
   let currentEnd = defaultEndPct;
@@ -2124,15 +2097,12 @@ function renderEChart(showAnimation = true) {
         const c = AppState.liveCandles && AppState.liveCandles[dataIdx];
         if (!c) return '';
 
-        const e9 = (typeof ema9 !== 'undefined' && ema9) ? ema9[dataIdx] : null;
         const e21 = (typeof ema21 !== 'undefined' && ema21) ? ema21[dataIdx] : null;
-        const e50 = (typeof ema50 !== 'undefined' && ema50) ? ema50[dataIdx] : null;
-        const e200 = (typeof ema200 !== 'undefined' && ema200) ? ema200[dataIdx] : null;
         const rsi = (typeof rsiValues !== 'undefined' && rsiValues) ? rsiValues[dataIdx] : null;
         const rm = (typeof rsiMa !== 'undefined' && rsiMa) ? rsiMa[dataIdx] : null;
 
         // Dynamically update the top status strip as cursor glides across candles
-        updateOHLCDisplay(c, rsi, rm, e9, e21, e50, e200);
+        updateOHLCDisplay(c, rsi, rm, e21);
 
         const isLine = AppState.chartType === 'line';
         const isHa = AppState.chartType === 'heikinashi' && c.haOpen != null;
@@ -2171,12 +2141,9 @@ function renderEChart(showAnimation = true) {
             '<span><span style="color:#64748b;">Change:</span> <strong style="color:' + color + ';">' + sign + diff + ' (' + sign + pct + '%)</strong></span>' +
             '<span><span style="color:#64748b;">Vol:</span> <strong>' + (c.volume || 0).toLocaleString('en-IN') + '</strong></span>' +
           '</div>' +
-          ((AppState.indicators.ema9 && e9 != null) || (AppState.indicators.ema21 && e21 != null) || (AppState.indicators.ema50 && e50 != null) || (AppState.indicators.ema200 && e200 != null) ? (
-            '<div style="margin-top:6px; padding-top:4px; border-top:1px solid #f1f5f9; font-size:10px; display:flex; gap:8px; flex-wrap:wrap;">' +
-              (AppState.indicators.ema9 && e9 != null ? '<span style="color:#2563eb;">EMA9: <strong>' + e9 + '</strong></span>' : '') +
-              (AppState.indicators.ema21 && e21 != null ? '<span style="color:#d97706;">EMA21: <strong>' + e21 + '</strong></span>' : '') +
-              (AppState.indicators.ema50 && e50 != null ? '<span style="color:#8b5cf6;">EMA50: <strong>' + e50 + '</strong></span>' : '') +
-              (AppState.indicators.ema200 && e200 != null ? '<span style="color:#dc2626;">EMA200: <strong>' + e200 + '</strong></span>' : '') +
+          (AppState.indicators.ema21 && e21 != null ? (
+            '<div style="margin-top:6px; padding-top:4px; border-top:1px solid #f1f5f9; font-size:10px;">' +
+              '<span style="color:#d97706;">EMA(21): <strong>' + e21 + '</strong></span>' +
             '</div>'
           ) : '') +
           (rsi != null ? (
@@ -2201,8 +2168,7 @@ function renderEChart(showAnimation = true) {
         maxSpan: 100,
         zoomOnMouseWheel: true,
         moveOnMouseMove: true,
-        moveOnMouseWheel: false,
-        preventDefaultMouseMove: true
+        moveOnMouseWheel: false
       },
       {
         type: 'slider',
@@ -2252,11 +2218,11 @@ function chartPan(deltaPct) {
   let newEnd = dz.end + deltaPct;
   if (newStart < 0) {
     newStart = 0;
-    newEnd = span;
+    newEnd = Math.min(100, span);
   }
   if (newEnd > 100) {
     newEnd = 100;
-    newStart = 100 - span;
+    newStart = Math.max(0, 100 - span);
   }
   AppState.chart.dispatchAction({
     type: 'dataZoom',
@@ -2276,7 +2242,7 @@ window.chartPan = chartPan;
 window.chartResetZoom = chartResetZoom;
 window.renderEChart = renderEChart;
 
-function updateOHLCDisplay(candle, rsi, rsiMa, ema9Val, ema21Val, ema50Val, ema200Val) {
+function updateOHLCDisplay(candle, rsi, rsiMa, ema21Val) {
   if (!candle) return;
   const elDate = document.getElementById('val-date');
   const elTime = document.getElementById('val-time');
@@ -2298,39 +2264,18 @@ function updateOHLCDisplay(candle, rsi, rsiMa, ema9Val, ema21Val, ema50Val, ema2
   if (l) l.textContent = dispLow.toFixed(2);
   if (c) c.textContent = dispClose.toFixed(2);
 
-  if (ema9Val == null && AppState.liveCandles && AppState.liveCandles.length > 0) {
+  if (ema21Val == null && AppState.liveCandles && AppState.liveCandles.length > 0) {
     const cl = AppState.liveCandles.map(x => x.close);
     const li = cl.length - 1;
-    const e9Arr = calculateEMA(cl, 9);
     const e21Arr = calculateEMA(cl, 21);
-    const e50Arr = calculateEMA(cl, 50);
-    const e200Arr = calculateEMA(cl, 200);
-    ema9Val = e9Arr[li];
     ema21Val = e21Arr[li];
-    ema50Val = e50Arr[li];
-    ema200Val = e200Arr[li];
   }
 
-  // EMA values
-  const e9El = document.getElementById('val-ema-9');
+  // EMA 21 value
   const e21El = document.getElementById('val-ema-21');
-  const e50El = document.getElementById('val-ema-50');
-  const e200El = document.getElementById('val-ema-200');
-
-  const e9Wrap = document.getElementById('ema-9-wrap');
   const e21Wrap = document.getElementById('ema-21-wrap');
-  const e50Wrap = document.getElementById('ema-50-wrap');
-  const e200Wrap = document.getElementById('ema-200-wrap');
-
-  if (e9Wrap) e9Wrap.style.display = AppState.indicators.ema9 ? 'inline' : 'none';
   if (e21Wrap) e21Wrap.style.display = AppState.indicators.ema21 ? 'inline' : 'none';
-  if (e50Wrap) e50Wrap.style.display = AppState.indicators.ema50 ? 'inline' : 'none';
-  if (e200Wrap) e200Wrap.style.display = AppState.indicators.ema200 ? 'inline' : 'none';
-
-  if (e9El && ema9Val != null) e9El.textContent = Number(ema9Val).toFixed(2);
   if (e21El && ema21Val != null) e21El.textContent = Number(ema21Val).toFixed(2);
-  if (e50El && ema50Val != null) e50El.textContent = Number(ema50Val).toFixed(2);
-  if (e200El && ema200Val != null) e200El.textContent = Number(ema200Val).toFixed(2);
 
   const rEl = document.getElementById('val-rsi');
   const rmEl = document.getElementById('val-rsi-ma');

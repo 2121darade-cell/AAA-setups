@@ -885,11 +885,10 @@ body {
 }
 
 .chart-canvas-container {
-  width: 100%;
+  flex: 1;
+  width: calc(100% - 40px);
   height: 100%;
-  position: absolute;
-  top: 0;
-  left: 0;
+  position: relative;
 }
 
 /* Watchlist Sidebar */
