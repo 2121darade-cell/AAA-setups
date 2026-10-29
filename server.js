@@ -3302,7 +3302,7 @@ const server = http.createServer(async (req, res) => {
 
     // 5. API: Daily (1D) AAA Candlestick Reversal Screener
     if (pathname === '/api/tradejini/screener') {
-      const days = parsedUrl.searchParams.get('days') || '10';
+      const days = parsedUrl.searchParams.get('days') || '1';
       const minTrend = parsedUrl.searchParams.get('minTrend') || '3';
       const screenerResult = await getTradejiniAaaScreener(days, minTrend);
       sendJson(res, 200, screenerResult);
@@ -3427,10 +3427,12 @@ function scheduleDailyTradejiniSupervisor() {
       }
 
       // Checkpoint 16:00 IST: Daily 4:00 PM AAA Screener Update (For Tomorrow's Market)
-      if (hhmm === '16:00' && lastExecutedAction !== `AAA_4PM_${actionKey}`) {
-        lastExecutedAction = `AAA_4PM_${actionKey}`;
-        console.log(`[AAA Screener Supervisor] [16:00 IST / 4:00 PM] Market Closed: Finalizing today's closed Daily (1D) candles & generating fresh signals for tomorrow...`);
-        warmupDailyAaaUniverse(true).then(() => getTradejiniAaaScreener(1, 2)).catch(() => {});
+      const hhmmNum = Number(ist.hh) * 100 + Number(ist.mm);
+      const postCloseKey = `AAA_4PM_DONE_${ist.fullDate}`;
+      if (hhmmNum >= 1600 && lastExecutedAction !== postCloseKey && !morningWarmupInFlight) {
+        lastExecutedAction = postCloseKey;
+        console.log(`[AAA Screener Supervisor] [16:00+ IST / Post-Close] Market Closed: Finalizing today's (${ist.fullDate}) closed Daily (1D) candles & generating fresh AAA setups for tomorrow...`);
+        warmupDailyAaaUniverse(true).then(() => getTradejiniAaaScreener(1, 3)).catch(() => {});
       }
 
       // 2. Token Expiry Guard (Runs continuously)
