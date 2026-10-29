@@ -885,10 +885,20 @@ body {
 }
 
 .chart-canvas-container {
+  flex: 1 1 0%;
+  width: 100%;
+  min-height: 200px;
+  position: relative;
+}
+
+.chart-canvas-wrapper {
   flex: 1;
+  display: flex;
+  flex-direction: column;
   width: calc(100% - 40px);
   height: 100%;
   position: relative;
+  overflow: hidden;
 }
 
 /* Watchlist Sidebar */
@@ -1263,6 +1273,25 @@ body {
   background: #ecfdf5;
   border-color: #a7f3d0;
   color: #065f46;
+}
+
+.ts-date-picker-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+.ts-date-picker-wrap:hover .ts-btn-secondary {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+.ts-date-dropdown {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+  z-index: 2;
 }
 
 /* Signals Grid */

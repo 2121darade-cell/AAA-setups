@@ -10,7 +10,7 @@ const AAAScreenerModule = (function () {
   let currentFilter = {
     type: 'ALL',
     pattern: '',
-    lookback: '10',
+    lookback: '1',
     trendLength: '3',
     search: ''
   };
@@ -237,7 +237,7 @@ const AAAScreenerModule = (function () {
       if (emptyState) emptyState.style.display = 'none';
     }
 
-    const daysParam = encodeURIComponent(currentFilter.lookback || 10);
+    const daysParam = encodeURIComponent(currentFilter.lookback || 1);
     const minTrendParam = encodeURIComponent(currentFilter.trendLength || 3);
 
     // Direct Dynamic Fetch from Tradejini CubePlus Live Daily (1D) Screener API
@@ -337,7 +337,7 @@ const AAAScreenerModule = (function () {
         <tr style="${s.status === 'SL_HIT' ? 'opacity:0.86;' : ''}">
           <td>
             <div class="aaa-sym-title">${s.symbol} <span style="font-size:11px; color:${isBuy ? '#059669' : '#dc2626'}; font-weight:700;">(LTP: ₹${s.ltp || s.entry})</span></div>
-            <div class="aaa-sym-sub">${s.name} ${s.date ? '&bull; 📅 ' + s.date : ''}</div>
+            <div class="aaa-sym-sub">${s.name} ${s.date ? '&bull; 📅 संदर्भ: <strong>' + s.date + '</strong>' : ''}</div>
           </td>
           <td>
             <div style="display:flex; flex-direction:column; gap:4px; align-items:flex-start;">
@@ -349,7 +349,6 @@ const AAAScreenerModule = (function () {
           </td>
           <td>
             <span class="aaa-pattern-tag">${s.pattern}</span>
-            ${s.ohlcSummary ? `<div style="font-size:10px; color:#475569; margin-top:4px; line-height:1.35; max-width:290px;">🕯️ ${s.ohlcSummary}</div>` : ''}
           </td>
           <td>${trendBadge}</td>
           <td class="aaa-price">₹${s.entry}</td>
@@ -380,7 +379,7 @@ const AAAScreenerModule = (function () {
     const entryLbl = isEn ? 'Entry' : 'एन्ट्री';
     const ltpLbl = isEn ? 'Live LTP' : 'चालू भाव (LTP)';
     document.getElementById('aaaModalSymbol').textContent = `${s.symbol} - ${s.pattern} (${s.type} • ${s.statusText || 'Active'})`;
-    document.getElementById('aaaModalSubtitle').textContent = `${entryLbl}: ₹${s.entry} | SL: ₹${s.stopLoss} | Tgt 1: ₹${s.target1} | Tgt 2: ₹${s.target2} | ${ltpLbl}: ₹${s.ltp || s.entry}${s.ohlcSummary ? '  •  ' + s.ohlcSummary : ''}`;
+    document.getElementById('aaaModalSubtitle').textContent = `${entryLbl}: ₹${s.entry} | SL: ₹${s.stopLoss} | Tgt 1: ₹${s.target1} | Tgt 2: ₹${s.target2} | ${ltpLbl}: ₹${s.ltp || s.entry}`;
     modal.classList.add('active');
     setTimeout(() => drawCandlestickModal(s), 50);
   }

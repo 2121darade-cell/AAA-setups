@@ -10,6 +10,8 @@ const TradeSetupModule = (function () {
     filteredSignals: [],
     activeFilter: 'ALL',
     searchQuery: '',
+    selectedDate: '',
+    availableDates: [],
     audioEnabled: true,
     notificationsEnabled: false,
     refreshIntervalSeconds: 60,
@@ -169,6 +171,33 @@ const TradeSetupModule = (function () {
     };
   }
 
+  function loadAvailableDates() {
+    const sel = document.getElementById('tsDateSelect');
+    if (!sel) return;
+
+    fetch('./api/tradejini/trade-setup/dates')
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (!data || data.s !== 'ok' || !Array.isArray(data.dates)) return;
+        state.availableDates = data.dates;
+        const isEn = window.I18N && window.I18N.getLang() === 'en';
+
+        let html = `<option value="" ${state.selectedDate === '' ? 'selected' : ''}>📅 ${isEn ? "Today's Live Session" : "आजचे थेट सत्र"} (${data.today})</option>`;
+
+        data.dates.forEach(d => {
+          if (d.isToday) return;
+          const isSel = state.selectedDate === d.fileKey;
+          const statText = isEn
+            ? `${d.stats.total} calls & puts • ${d.stats.targets} targets`
+            : `${d.stats.total} सिग्नल्स • ${d.stats.targets} टार्गेट्स`;
+          html += `<option value="${d.fileKey}" ${isSel ? 'selected' : ''}>📅 ${d.date} (${statText})</option>`;
+        });
+
+        sel.innerHTML = html;
+      })
+      .catch(err => console.warn('Failed to load session dates:', err));
+  }
+
   // Scan live 5-Minute Heikin Ashi signals directly from Tradejini CubePlus API
   function scanStrategy() {
     const isEn = window.I18N && window.I18N.getLang() === 'en';
@@ -190,10 +219,40 @@ const TradeSetupModule = (function () {
       `;
     }
 
-    fetch('./api/tradejini/trade-setup')
+    const url = state.selectedDate
+      ? `./api/tradejini/trade-setup?date=${encodeURIComponent(state.selectedDate)}`
+      : './api/tradejini/trade-setup';
+
+    fetch(url)
       .then(res => res.ok ? res.json() : null)
       .then(data => {
         if (data && data.s === 'ok') {
+          if (data.sessionDate) {
+            const dtEl = document.getElementById('tsSessionDateText');
+            if (dtEl) {
+              const isEn = window.I18N && window.I18N.getLang() === 'en';
+              if (data.isHistorical) {
+                dtEl.innerHTML = isEn
+                  ? `<strong>📅 Historical Session: ${data.sessionDate} (Completed)</strong> &bull; Showing archived calls and verified results.`
+                  : `<strong>📅 ऐतिहासिक सत्र: ${data.sessionDate} (पूर्ण)</strong> &bull; रेकॉर्ड झालेले सर्व सिग्नल्स आणि टार्गेट निकाल.`;
+              } else {
+                dtEl.innerHTML = isEn
+                  ? `<strong>Today's Live Session: ${data.sessionDate} (09:15 – 15:30 IST)</strong> &bull; Yesterday's signals reset automatically every morning.`
+                  : `<strong>आजचे थेट सत्र: ${data.sessionDate} (०९:१५ – १५:३० IST)</strong> &bull; कालचे सर्व जुने सिग्नल्स दररोज सकाळी ०९:१५ ला रीसेट होतात.`;
+              }
+            }
+          }
+          if (data.stats) {
+            const sTot = document.getElementById('tsStatTotal');
+            const sAct = document.getElementById('tsStatActive');
+            const sTgt = document.getElementById('tsStatTargets');
+            const sSl = document.getElementById('tsStatSl');
+            if (sTot) sTot.textContent = data.stats.total || 0;
+            if (sAct) sAct.textContent = data.stats.active || 0;
+            if (sTgt) sTgt.textContent = data.stats.targets || 0;
+            if (sSl) sSl.textContent = data.stats.sl || 0;
+          }
+
           if (Array.isArray(data.indices) && data.indices.length > 0) {
             state.indices = data.indices;
             renderIndices();
@@ -209,6 +268,8 @@ const TradeSetupModule = (function () {
                 }
               }
             });
+            // Strictly sort newest signal first
+            data.signals.sort((a, b) => (b.Timestamp || 0) - (a.Timestamp || 0));
             state.signals = data.signals;
             filterAndRenderSignals();
           }
@@ -322,8 +383,8 @@ const TradeSetupModule = (function () {
       container.innerHTML = `
         <div class="ts-empty-state">
           <div class="ts-empty-icon">🔍</div>
-          <h3>${isEn ? (window.I18N.t('ts_empty_title')) : 'मागील ४० मिनिटांत कोणताही ५-मिनिट Heikin Ashi + RSI(7) सेटअप मिळालेला नाही'}</h3>
-          <p>${isEn ? (window.I18N.t('ts_empty_sub')) : '३+ विरुद्ध HA कॅन्डल्स + <strong>RSI(7) &lt; 20 (BUY)</strong> किंवा <strong>RSI(7) &gt; 80 (SELL)</strong> + पहिली Flat-Wick कन्फर्मेशन कॅन्डल पूर्ण होताच नवीन सिग्नल येथे आपोआप दिसेल.'}</p>
+          <h3>${isEn ? "No 5-minute Heikin Ashi Setups Triggered Yet in Today's Session" : 'आजच्या थेट सत्रात (०९:१५ ते १५:३०) अद्याप कोणताही ५-मिनिट Heikin Ashi सेटअप मिळालेला नाही'}</h3>
+          <p>${isEn ? '3+ counter-trend HA candles + RSI(7) &lt; 20 / &gt; 80 + First Confirmation Flat-Wick candle will appear here automatically with trigger time.' : '३+ विरुद्ध HA कॅन्डल्स + <strong>RSI(7) &lt; 20 (BUY)</strong> किंवा <strong>RSI(7) &gt; 80 (SELL)</strong> + पहिली Flat-Wick कन्फर्मेशन कॅन्डल पूर्ण होताच नवीन सिग्नल येथे वेळेसह आपोआप दिसेल.'}</p>
         </div>
       `;
       return;
@@ -373,17 +434,17 @@ const TradeSetupModule = (function () {
               <span class="ts-cat-badge">${sig.Category}</span>
             </div>
             <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-              <span style="font-size:11px; font-weight:800; padding:3px 8px; border-radius:999px; ${rsiBadgeStyle}">
-                ${isBuy ? '📉' : '📈'} RSI(7): ${rsiDisplay}
-              </span>
               <span style="font-size:11px; font-weight:800; padding:3px 8px; border-radius:999px; ${statusStyle}">
                 ${statusText}
               </span>
-              <div class="ts-card-time">⏰ ${sig.Time}</div>
+              <div class="ts-card-time" style="display:inline-flex; align-items:center; gap:4px; font-weight:700; background:#f8fafc; border:1px solid #cbd5e1; padding:3px 9px; border-radius:6px; font-size:11px; color:#1e293b;">
+                <span>⏰</span>
+                <span>${sig.DisplayTime || sig.SignalBarTime || sig.Time}</span>
+              </div>
             </div>
           </div>
 
-          <div class="ts-atm-banner" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+          <div class="ts-atm-banner" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:12px;">
             <div>
               <span>${tAtm}</span>
               <strong>${sig.ATM}</strong>
@@ -391,16 +452,6 @@ const TradeSetupModule = (function () {
             <div style="font-size:12px; font-weight:800; color:#0f172a; background:#ffffff; padding:3px 10px; border-radius:6px; border:1px solid #cbd5e1;">
               ${tLtp} <span style="color:${isBuy ? '#059669' : '#dc2626'};">₹${sig.LTP != null ? sig.LTP : sig.Entry}</span>
             </div>
-          </div>
-
-          <!-- Pure Heikin Ashi Signal Candle OHLC + RSI Strip -->
-          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; padding:6px 10px; margin-bottom:10px; font-size:11px;">
-            <span style="font-weight:700; color:#475569;">${tOhlc}</span>
-            <span>O: <strong>₹${haO}</strong></span>
-            <span>H: <strong style="color:#089981;">₹${haH}</strong></span>
-            <span>L: <strong style="color:#f23645;">₹${haL}</strong></span>
-            <span>C: <strong style="color:#1d4ed8;">₹${haC}</strong></span>
-            <span style="background:#eef2ff; color:#3730a3; padding:2px 6px; border-radius:4px; font-weight:700;">${tPrior} ${priorTrend}</span>
           </div>
 
           <div class="ts-card-grid">
@@ -478,7 +529,7 @@ const TradeSetupModule = (function () {
       if (!modal) return;
       const rsiInfo = sig.RSILabel || (sig.RSI != null ? sig.RSI : (sig.Type === 'BUY' ? '< 20' : '> 80'));
       document.getElementById('tsChartTitle').textContent = `${sig.Symbol} - 5M Heikin Ashi + RSI(7) Setup (${sig.StatusText || 'Active'})`;
-      document.getElementById('tsChartSubtitle').textContent = `${sig.Type} | Time: ${sig.Time} | RSI(7): ${rsiInfo} | Entry (HA Close): ₹${sig.Entry} | SL (${sig.Type === 'BUY' ? 'HA Low' : 'HA High'}): ₹${sig.StopLoss} | Live LTP: ₹${sig.LTP || sig.Entry}`;
+      document.getElementById('tsChartSubtitle').textContent = `${sig.Type} | Time: ${sig.Time} | Entry (HA Close): ₹${sig.Entry} | SL (${sig.Type === 'BUY' ? 'HA Low' : 'HA High'}): ₹${sig.StopLoss} | Live LTP: ₹${sig.LTP || sig.Entry}`;
       modal.classList.add('active');
       setTimeout(() => drawHeikinAshiChart(sig), 80);
     };
@@ -705,9 +756,31 @@ const TradeSetupModule = (function () {
   }
 
   function init() {
+    loadAvailableDates();
     scanStrategy();
 
     // Event listeners
+    const dateSelect = document.getElementById('tsDateSelect');
+    if (dateSelect) {
+      dateSelect.addEventListener('change', (e) => {
+        state.selectedDate = e.target.value;
+        const isEn = window.I18N && window.I18N.getLang() === 'en';
+        const labelEl = document.getElementById('tsSelectedDateLabel');
+        if (labelEl) {
+          if (!state.selectedDate) {
+            labelEl.textContent = isEn ? "Today's Live Session" : "आजचे थेट सत्र";
+          } else {
+            const matched = state.availableDates.find(d => d.fileKey === state.selectedDate);
+            labelEl.textContent = matched ? `📅 ${matched.date}` : `📅 ${state.selectedDate.replace(/_/g, ' ')}`;
+          }
+        }
+        if (typeof showToastNotification === 'function') {
+          showToastNotification(isEn ? 'Loading session signals...' : 'सत्राचे सिग्नल्स लोड होत आहेत...', 'info');
+        }
+        scanStrategy();
+      });
+    }
+
     const btnScan = document.getElementById('tsBtnScanNow');
     if (btnScan) {
       btnScan.addEventListener('click', () => {

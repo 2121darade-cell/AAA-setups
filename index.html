@@ -13,7 +13,7 @@
   <link rel="apple-touch-icon" href="./assets/logo.png" />
   <link rel="manifest" href="./manifest.json" />
 
-  <link rel="stylesheet" href="./assets/style.css?v=20261028_v2" />
+  <link rel="stylesheet" href="./assets/style.css?v=20261029_v4" />
   
   <!-- TradingView Lightweight Charts Engine -->
   <script src="./assets/lightweight-charts.standalone.production.js?v=20261028_v2"></script>
@@ -36,9 +36,9 @@
 
   <!-- Sub-Modules & Localization -->
   <script src="./assets/cubeplus_feed.js?v=20261028_v2"></script>
-  <script src="./assets/i18n.js?v=20261028_v2"></script>
-  <script src="./assets/trade_setup.js?v=20261029_v1"></script>
-  <script src="./assets/aaa_screener.js?v=20261028_v2"></script>
+  <script src="./assets/i18n.js?v=20261029_v4"></script>
+  <script src="./assets/trade_setup.js?v=20261029_v4"></script>
+  <script src="./assets/aaa_screener.js?v=20261029_v4"></script>
 </head>
 <body>
 
@@ -363,6 +363,18 @@
         </div>
 
         <div class="ts-actions-group">
+          <!-- Calendar Date Selector for Historical / Today Sessions -->
+          <div class="ts-date-picker-wrap" style="position:relative; display:inline-flex; align-items:center;">
+            <button id="tsBtnCalendar" class="ts-btn-secondary" title="तारीख निवडा (Select Session Date)" style="display:flex; align-items:center; gap:6px;">
+              <span style="font-size:14px;">📅</span>
+              <span id="tsSelectedDateLabel" data-i18n="ts_date_today">आजचे थेट सत्र</span>
+              <span style="font-size:9px; opacity:0.7;">▼</span>
+            </button>
+            <select id="tsDateSelect" class="ts-date-dropdown" style="position:absolute; inset:0; width:100%; height:100%; opacity:0; cursor:pointer;" title="तारीख निवडा (Select Session Date)">
+              <option value="" selected data-i18n="ts_opt_today">📅 आजचे थेट सत्र (Today's Live Session)</option>
+            </select>
+          </div>
+
           <button id="tsBtnAudioToggle" class="ts-btn-secondary active">
             <span class="ts-audio-text" data-i18n="ts_audio_on">🔊 ध्वनी चालू</span>
           </button>
@@ -439,10 +451,9 @@
         </select>
 
         <select id="aaaTrendFilter" class="aaa-filter-select">
-          <option value="2" selected data-i18n="aaa_opt_trend_2">२+ Daily कॅन्डल्स ट्रेंड</option>
-          <option value="3" data-i18n="aaa_opt_trend_3">३+ Daily कॅन्डल्स ट्रेंड</option>
-          <option value="4" data-i18n="aaa_opt_trend_4">४+ Daily कॅन्डल्स ट्रेंड (Standard)</option>
-          <option value="5" data-i18n="aaa_opt_trend_5">५+ Daily कॅन्डल्स ट्रेंड (Strong)</option>
+          <option value="3" selected data-i18n="aaa_opt_trend_3">३+ Daily कॅन्डल्स ट्रेंड (Standard Rule)</option>
+          <option value="4" data-i18n="aaa_opt_trend_4">४+ Daily कॅन्डल्स ट्रेंड (Strong)</option>
+          <option value="5" data-i18n="aaa_opt_trend_5">५+ Daily कॅन्डल्स ट्रेंड (Major Trend)</option>
         </select>
 
         <div style="flex:1; max-width:220px;">
@@ -860,6 +871,6 @@
   </div>
 
   <!-- Core Main Application Logic -->
-  <script src="./assets/app.js?v=20261029_v3"></script>
+  <script src="./assets/app.js?v=20261029_v4"></script>
 </body>
 </html>

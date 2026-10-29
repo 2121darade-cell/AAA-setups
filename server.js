@@ -10,6 +10,16 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const { URL } = require('url');
+const { WebSocketServer } = require('ws');
+const dhan = require('./lib/dhan.js');
+
+// Global Exception Protection - Prevent server crashes on network timeouts or socket resets
+process.on('uncaughtException', (err) => {
+  console.error('[Daemon Protection] Uncaught Exception caught:', err.message || err);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[Daemon Protection] Unhandled Rejection caught:', reason ? (reason.message || reason) : 'Unknown');
+});
 
 const PORT = parseInt(process.env.PORT || '8085', 10);
 const HOST = process.env.HOST || '127.0.0.1';
@@ -42,9 +52,112 @@ let quotesSweepInFlight = null;
 
 // Screener & Trade Setup Caches
 const screenerCache = new Map();
+const dailyUniverseCandlesMap = new Map();
 let cachedTradeSetup = null;
 let lastTradeSetupMs = 0;
 let tradeSetupInFlight = null;
+
+// Persistent Session Manager for Intraday Trade Setup (09:15 - 15:30 IST)
+const SESSIONS_DIR = path.join(__dirname, 'data', 'sessions');
+try {
+  if (!fs.existsSync(SESSIONS_DIR)) {
+    fs.mkdirSync(SESSIONS_DIR, { recursive: true });
+  }
+} catch (e) {}
+
+let activeSessionDate = '';
+const activeSessionSignals = new Map();
+
+function getSessionFilePath(dateStr) {
+  const safeDate = String(dateStr || '').trim().replace(/[^a-zA-Z0-9_-]/g, '_');
+  return path.join(SESSIONS_DIR, `session_${safeDate}.json`);
+}
+
+function ensureTodaySession() {
+  const todayStr = formatIst(Date.now()).fullDate; // e.g. "29 Oct 2026"
+  if (activeSessionDate !== todayStr) {
+    activeSessionDate = todayStr;
+    activeSessionSignals.clear();
+    const fPath = getSessionFilePath(todayStr);
+    if (fs.existsSync(fPath)) {
+      try {
+        const raw = JSON.parse(fs.readFileSync(fPath, 'utf8'));
+        if (Array.isArray(raw.signals)) {
+          for (const s of raw.signals) {
+            if (s && s.Id) activeSessionSignals.set(s.Id, s);
+          }
+          console.log(`[Trade Setup Session] Loaded ${activeSessionSignals.size} signals for session: ${todayStr}`);
+        }
+      } catch (e) {
+        console.warn(`[Trade Setup Session] Failed to load session ${todayStr}:`, e.message);
+      }
+    } else {
+      console.log(`[Trade Setup Session] Initialized fresh BLANK SLATE session for ${todayStr} (0 signals)`);
+    }
+  }
+  return todayStr;
+}
+
+function saveTodaySession() {
+  if (!activeSessionDate) return;
+  const fPath = getSessionFilePath(activeSessionDate);
+  try {
+    const data = {
+      date: activeSessionDate,
+      updatedAt: formatIst(Date.now()).fullDateTime,
+      signals: Array.from(activeSessionSignals.values())
+    };
+    fs.writeFileSync(fPath, JSON.stringify(data, null, 2), 'utf8');
+  } catch (e) {
+    console.warn(`[Trade Setup Session] Failed to save session:`, e.message);
+  }
+}
+
+function getSavedSessionDates() {
+  const list = [];
+  try {
+    if (!fs.existsSync(SESSIONS_DIR)) return [];
+    const files = fs.readdirSync(SESSIONS_DIR);
+    const todayStr = formatIst(Date.now()).fullDate;
+
+    for (const f of files) {
+      if (f.startsWith('session_') && f.endsWith('.json')) {
+        const fileKey = f.replace(/^session_/, '').replace(/\.json$/, '');
+        const fPath = path.join(SESSIONS_DIR, f);
+        try {
+          const raw = JSON.parse(fs.readFileSync(fPath, 'utf8'));
+          const dateStr = raw.date || fileKey.replace(/_/g, ' ');
+          const sigs = Array.isArray(raw.signals) ? raw.signals : [];
+          list.push({
+            date: dateStr,
+            fileKey,
+            isToday: dateStr === todayStr,
+            updatedAt: raw.updatedAt || '',
+            stats: {
+              total: sigs.length,
+              active: sigs.filter(s => s.Status === 'ACTIVE').length,
+              targets: sigs.filter(s => s.Status === 'TARGET_1_HIT' || s.Status === 'TARGET_2_HIT').length,
+              stopLosses: sigs.filter(s => s.Status === 'SL_HIT').length
+            }
+          });
+        } catch (e) {}
+      }
+    }
+  } catch (err) {
+    console.warn('[Session Storage] Error reading session files:', err.message);
+  }
+
+  // Sort: Today first, then latest dates descending
+  list.sort((a, b) => {
+    if (a.isToday) return -1;
+    if (b.isToday) return 1;
+    const tA = new Date(a.date).getTime() || 0;
+    const tB = new Date(b.date).getTime() || 0;
+    return tB - tA;
+  });
+
+  return list;
+}
 
 const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -66,7 +179,8 @@ const CORE_STOCKS = [
   'RELIANCE', 'TCS', 'HDFCBANK', 'INFY', 'ICICIBANK', 'SBIN', 'BHARTIARTL',
   'ITC', 'KOTAKBANK', 'LT', 'AXISBANK', 'HINDUNILVR', 'BAJFINANCE', 'MARUTI',
   'ASIANPAINT', 'TATAMOTORS', 'SUNPHARMA', 'TITAN', 'NTPC', 'POWERGRID',
-  'ADANIENT', 'BAJAJFINSV', 'WIPRO', 'HCLTECH', 'ULTRACEMCO', 'ONGC',
+  'ADANIENT', 'ADANIPORTS', 'BAJAJ-AUTO', 'LTIM', 'M&M', 'NESTLEIND', 'SHREECEM',
+  'BAJAJFINSV', 'WIPRO', 'HCLTECH', 'ULTRACEMCO', 'ONGC',
   'COALINDIA', 'JSWSTEEL', 'TATASTEEL', 'TECHM', 'INDUSINDBK', 'HINDALCO',
   'GRASIM', 'CIPLA', 'DRREDDY', 'EICHERMOT', 'DIVISLAB', 'BPCL',
   'HEROMOTOCO', 'APOLLOHOSP', 'BRITANNIA', 'TATACONSUM', 'SBILIFE', 'HDFCLIFE',
@@ -407,6 +521,15 @@ let tjStreamClient = null;
 let tjStreamConnected = false;
 let tjStreamReconnectTimer = null;
 let latestMarketStatus = { NSE: 0, BSE: 0, MCX: 0 };
+
+function getCurrentMarketStatus() {
+  const isMkt = isIndianMarketHours();
+  return {
+    NSE: isMkt ? 1 : (latestMarketStatus.NSE || 0),
+    BSE: isMkt ? 1 : (latestMarketStatus.BSE || 0),
+    MCX: isMkt ? 1 : (latestMarketStatus.MCX || 0)
+  };
+}
 const sseStreamClients = new Set();
 const tjStreamActiveTokens = new Set([
   '-1_NSE',
@@ -478,6 +601,56 @@ async function loadTradejiniSecuritiesCatalog() {
     console.warn(`[Tradejini Catalog] Could not fetch securities catalog: ${e.message}`);
   }
 }
+
+const browserWsClients = new Set();
+
+function broadcastWsTick(tick) {
+  if (browserWsClients.size === 0) return;
+  const msg = JSON.stringify({ type: 'tick', tick });
+  for (const client of browserWsClients) {
+    if (client.readyState === 1 /* WebSocket.OPEN */) {
+      try {
+        client.send(msg);
+      } catch (e) {
+        browserWsClients.delete(client);
+      }
+    }
+  }
+}
+
+// Hook DhanHQ Real-Time WebSocket stream
+dhan.dhanStream.onTick((tick) => {
+  const sym = tick.symbol.toUpperCase().trim();
+  const canon = (tick.canonicalSymbol || sym).toUpperCase().trim();
+
+  const quote = {
+    symbol: sym,
+    canonicalSymbol: canon,
+    securityId: tick.securityId,
+    segment: tick.segment,
+    price: tick.price,
+    open: tick.open || tick.price,
+    high: tick.high || tick.price,
+    low: tick.low || tick.price,
+    prevClose: tick.prevClose || tick.price,
+    change: tick.change,
+    changePercent: tick.changePercent,
+    time: tick.time,
+    timestamp: tick.timestamp,
+    source: 'Dhan WebSocket Live Stream'
+  };
+
+  liveQuotesMap.set(sym, quote);
+  if (canon !== sym) {
+    liveQuotesMap.set(canon, quote);
+  }
+
+  broadcastWsTick(quote);
+  broadcastSseStream({
+    type: 'tick',
+    tick: quote
+  });
+});
 
 function broadcastSseStream(payload) {
   if (sseStreamClients.size === 0) return;
@@ -601,6 +774,7 @@ async function initTradejiniWebSocketStream() {
           liveQuotesMap.set(streamSym.toUpperCase().trim(), quote);
         }
 
+        broadcastWsTick(quote);
         broadcastSseStream({
           type: 'tick',
           tick: quote
@@ -928,24 +1102,44 @@ async function fetchRawTradejiniBars(symbol, rawInterval = '5', reqDays = 7) {
   };
 }
 
-// 4. Fetch Real Live Candles from Tradejini (Supports 1m, 5m, 15m, 60m, Daily 'D', Weekly 'W', and Monthly 'M')
-async function getTradejiniCandles(symbol, interval = '5', days = 7) {
+// 4. Fetch Real Live Candles from DhanHQ (with Tradejini Fallback)
+async function getTradejiniCandles(symbol, interval = '5', days = 90) {
   const normIntv = String(interval || '5').toUpperCase();
-  const tjInterval = ['1', '5', '15', '60', 'D', '1D', 'W', '1W', 'M', '1M'].includes(normIntv)
+  const tf = ['1', '5', '15', '60', 'D', '1D', 'W', '1W', 'M', '1M'].includes(normIntv)
     ? (normIntv === '1D' ? 'D' : (normIntv === '1W' ? 'W' : (normIntv === '1M' ? 'M' : normIntv)))
     : '5';
-  const tradejiniId = resolveTradejiniId(symbol);
 
-  if (tjInterval === '1') {
+  const reqDays = (tf === 'W' || tf === 'M') ? 365 : (tf === 'D' ? Math.max(Number(days) || 90, 90) : (Number(days) || 7));
+
+  // 1. Primary: High-Speed, Rate-Limited DhanHQ v2 Engine (Guaranteed 3-month history & real OHLC)
+  try {
+    const dhanRes = await dhan.getDhanCandles(symbol, tf, reqDays);
+    if (dhanRes && dhanRes.s === 'ok' && Array.isArray(dhanRes.candles) && dhanRes.candles.length > 0) {
+      const quote = extractQuoteFromCandles(symbol, dhanRes.candles);
+      return {
+        s: 'ok',
+        symbol: symbol.toUpperCase().trim(),
+        count: dhanRes.candles.length,
+        quote: quote,
+        candles: dhanRes.candles,
+        source: dhanRes.source || `DhanHQ API v2 (${tf})`
+      };
+    }
+  } catch (err) {
+    console.warn(`[Dhan Candle Engine] Fallback to Tradejini for ${symbol}:`, err.message);
+  }
+
+  // 2. Secondary Fallback: Tradejini API
+  const tradejiniId = resolveTradejiniId(symbol);
+  if (tf === '1') {
     return fetchRawTradejiniBars(symbol, '1', Math.min(Math.max(Number(days) || 3, 1), 7));
   }
-  if (tjInterval === '5') {
-    const reqDays = Number(days) >= 45 ? 60 : 7;
-    return fetchRawTradejiniBars(symbol, '5', reqDays);
+  if (tf === '5') {
+    const rDays = Number(days) >= 45 ? 60 : 7;
+    return fetchRawTradejiniBars(symbol, '5', rDays);
   }
 
-  // For 15m, 60m (1h), Daily ('D'), Weekly ('W'), and Monthly ('M')
-  const baseDays = (tjInterval === 'W' || tjInterval === 'M') ? 365 : (tjInterval === 'D' ? 60 : 15);
+  const baseDays = (tf === 'W' || tf === 'M') ? 365 : (tf === 'D' ? 60 : 15);
   const base5m = await fetchRawTradejiniBars(symbol, '5', baseDays);
   if (!base5m || base5m.s !== 'ok' || !Array.isArray(base5m.candles) || base5m.candles.length === 0) {
     return { s: 'error', symbol, tradejiniId, candles: [] };
@@ -953,17 +1147,17 @@ async function getTradejiniCandles(symbol, interval = '5', days = 7) {
 
   let aggCandles = [];
   const liveQ = liveQuotesMap.get(symbol.toUpperCase().trim()) || base5m.quote;
-  if (tjInterval === 'D') {
+  if (tf === 'D') {
     aggCandles = aggregateBarsToDaily(base5m.candles, liveQ);
-  } else if (tjInterval === 'W') {
+  } else if (tf === 'W') {
     const daily = aggregateBarsToDaily(base5m.candles, liveQ);
     aggCandles = aggregateDailyToWeekly(daily);
-  } else if (tjInterval === 'M') {
+  } else if (tf === 'M') {
     const daily = aggregateBarsToDaily(base5m.candles, liveQ);
     aggCandles = aggregateDailyToMonthly(daily);
-  } else if (tjInterval === '15') {
+  } else if (tf === '15') {
     aggCandles = aggregateBarsToMinutes(base5m.candles, 3);
-  } else if (tjInterval === '60') {
+  } else if (tf === '60') {
     aggCandles = aggregateBarsToMinutes(base5m.candles, 12);
   }
 
@@ -974,7 +1168,7 @@ async function getTradejiniCandles(symbol, interval = '5', days = 7) {
     count: aggCandles.length,
     quote: base5m.quote,
     candles: aggCandles,
-    source: `Tradejini CubePlus Live API (${tjInterval})`
+    source: `Tradejini CubePlus Live API (${tf})`
   };
 }
 
@@ -991,11 +1185,12 @@ async function getLiveQuotesSnapshot() {
     try {
       const symbols = [
         ...CORE_INDICES.map((i) => i.symbol),
-        ...CORE_MCX.map((m) => m.symbol),
-        ...INTRADAY_FAST_STOCKS
+        ...CORE_MCX.map((m) => m.symbol)
       ];
       for (const sym of symbols) {
-        await getTradejiniCandles(sym, '5', 7).catch(() => null);
+        if (!liveQuotesMap.has(sym)) {
+          await getTradejiniCandles(sym, '5', 3).catch(() => null);
+        }
       }
       lastQuotesSweepMs = Date.now();
       return Object.fromEntries(liveQuotesMap);
@@ -1069,10 +1264,10 @@ function convertToHeikinAshi(rawCandles) {
     const lowerWick = round2(Math.min(haOpen, haClose) - haLow);
     const upperWick = round2(haHigh - Math.max(haOpen, haClose));
 
-    // Strict Flat Bottom (for Green HA) & Flat Top (for Red HA):
-    // Meaningful candle body (>= 20% of total candle range) and shaved wick (<= 3% of body)
-    const noLowerWick = isGreen && (body / range) >= 0.20 && lowerWick <= body * 0.03;
-    const noUpperWick = isRed && (body / range) >= 0.20 && upperWick <= body * 0.03;
+    // Standard Flat Bottom (for Green HA) & Flat Top (for Red HA):
+    // Meaningful candle body (>= 20% of total candle range) and shaved wick (<= 8% of body)
+    const noLowerWick = isGreen && (body / range) >= 0.20 && lowerWick <= body * 0.08;
+    const noUpperWick = isRed && (body / range) >= 0.20 && upperWick <= body * 0.08;
 
     ha.push({
       Time: c.date || c.time || `Bar ${i + 1}`,
@@ -1129,40 +1324,33 @@ function evaluateSignalStatus(type, entry, sl, tgt1, tgt2, haCandles, signalIdx,
 
   for (let k = signalIdx + 1; k < n; k++) {
     const ck = haCandles[k];
+    const hi = Math.max(ck.HA_High || 0, ck.High || ck.HA_High || 0);
+    const lo = Math.min(ck.HA_Low || 999999, ck.Low || ck.HA_Low || 999999);
+
     if (type === 'BUY') {
       if (status === 'ACTIVE') {
-        if (ck.HA_Low <= sl) {
+        if (hi >= tgt1) {
+          status = (hi >= tgt2) ? 'TARGET_2_HIT' : 'TARGET_1_HIT';
+        } else if (lo <= sl) {
           status = 'SL_HIT';
           break;
         }
-        if (ck.HA_High >= tgt2) {
-          status = 'TARGET_2_HIT';
-          break;
-        }
-        if (ck.HA_High >= tgt1) {
-          status = 'TARGET_1_HIT';
-        }
       } else if (status === 'TARGET_1_HIT') {
-        if (ck.HA_High >= tgt2) {
+        if (hi >= tgt2) {
           status = 'TARGET_2_HIT';
           break;
         }
       }
     } else {
       if (status === 'ACTIVE') {
-        if (ck.HA_High >= sl) {
+        if (lo <= tgt1) {
+          status = (lo <= tgt2) ? 'TARGET_2_HIT' : 'TARGET_1_HIT';
+        } else if (hi >= sl) {
           status = 'SL_HIT';
           break;
         }
-        if (ck.HA_Low <= tgt2) {
-          status = 'TARGET_2_HIT';
-          break;
-        }
-        if (ck.HA_Low <= tgt1) {
-          status = 'TARGET_1_HIT';
-        }
       } else if (status === 'TARGET_1_HIT') {
-        if (ck.HA_Low <= tgt2) {
+        if (lo <= tgt2) {
           status = 'TARGET_2_HIT';
           break;
         }
@@ -1173,17 +1361,17 @@ function evaluateSignalStatus(type, entry, sl, tgt1, tgt2, haCandles, signalIdx,
   // Also check against live LTP
   if (type === 'BUY') {
     if (status === 'ACTIVE') {
-      if (ltp <= sl) status = 'SL_HIT';
-      else if (ltp >= tgt2) status = 'TARGET_2_HIT';
+      if (ltp >= tgt2) status = 'TARGET_2_HIT';
       else if (ltp >= tgt1) status = 'TARGET_1_HIT';
+      else if (ltp <= sl) status = 'SL_HIT';
     } else if (status === 'TARGET_1_HIT' && ltp >= tgt2) {
       status = 'TARGET_2_HIT';
     }
   } else {
     if (status === 'ACTIVE') {
-      if (ltp >= sl) status = 'SL_HIT';
-      else if (ltp <= tgt2) status = 'TARGET_2_HIT';
+      if (ltp <= tgt2) status = 'TARGET_2_HIT';
       else if (ltp <= tgt1) status = 'TARGET_1_HIT';
+      else if (ltp >= sl) status = 'SL_HIT';
     } else if (status === 'TARGET_1_HIT' && ltp <= tgt2) {
       status = 'TARGET_2_HIT';
     }
@@ -1201,7 +1389,298 @@ function evaluateSignalStatus(type, entry, sl, tgt1, tgt2, haCandles, signalIdx,
   };
 }
 
-async function getTradejiniTradeSetup() {
+async function generateHistoricalSession(targetDateStr) {
+  const fPath = getSessionFilePath(targetDateStr);
+  if (fs.existsSync(fPath)) {
+    try {
+      const raw = JSON.parse(fs.readFileSync(fPath, 'utf8'));
+      if (Array.isArray(raw.signals) && raw.signals.length > 0) return raw;
+    } catch (e) {}
+  }
+
+  const fullUniverse = [
+    ...CORE_INDICES.map(i => i.symbol),
+    ...CORE_MCX.map(m => m.symbol),
+    ...CORE_STOCKS
+  ];
+
+  const historicalSignals = [];
+
+  for (let b = 0; b < fullUniverse.length; b += 10) {
+    const batch = fullUniverse.slice(b, b + 10);
+    await Promise.all(batch.map(async (sym) => {
+      let cData = await dhan.getDhanCandles(sym, '5', 7).catch(() => null);
+      if (!cData || cData.s !== 'ok' || !Array.isArray(cData.candles) || cData.candles.length < 20) {
+        cData = await getTradejiniCandles(sym, '5', 7).catch(() => null);
+      }
+      if (!cData || cData.s !== 'ok' || !Array.isArray(cData.candles)) return;
+
+      const haCandles = convertToHeikinAshi(cData.candles);
+      const n = haCandles.length;
+
+      const countRedBefore = (idx) => {
+        let cnt = 0;
+        for (let k = idx - 1; k >= 0; k--) {
+          if (!haCandles[k].IsGreen) cnt++;
+          else break;
+        }
+        return cnt;
+      };
+
+      const countGreenBefore = (idx) => {
+        let cnt = 0;
+        for (let k = idx - 1; k >= 0; k--) {
+          if (haCandles[k].IsGreen) cnt++;
+          else break;
+        }
+        return cnt;
+      };
+
+      const category = (sym.includes('NIFTY') || sym.includes('SENSEX'))
+        ? 'INDEX'
+        : (sym === 'GOLD' || sym === 'CRUDEOIL' ? 'MCX' : 'STOCK');
+      const maxSessionTime = (sym === 'GOLD' || sym === 'CRUDEOIL') ? '23:30' : '15:30';
+
+      let dayEndIdx = -1;
+      for (let i = n - 1; i >= 0; i--) {
+        if (haCandles[i].FullDate === targetDateStr) {
+          dayEndIdx = i;
+          break;
+        }
+      }
+      if (dayEndIdx < 5) return;
+
+      for (let i = dayEndIdx; i >= 1; i--) {
+        const cCurr = haCandles[i];
+        const cPrev1 = haCandles[i - 1];
+
+        if (cCurr.FullDate !== targetDateStr) {
+          break;
+        }
+
+        const barTime = (cCurr.Time || '').replace(' IST', '').trim();
+        if (barTime < '09:15' || barTime > maxSessionTime) continue;
+
+        let buyRedTrend = 0;
+        let buyCcLabel = '';
+        let buyTrendStartIdx = i;
+        if (cCurr.IsGreen && cCurr.NoLowerWick) {
+          if (!cPrev1.IsGreen) {
+            const reds = countRedBefore(i);
+            if (reds >= 3) {
+              buyRedTrend = reds;
+              buyTrendStartIdx = Math.max(0, i - reds);
+              buyCcLabel = '१ ली हिरवी HA कॅन्डल (Flat Bottom CC)';
+            }
+          } else if (cPrev1.IsGreen && !cPrev1.NoLowerWick && cCurr.HA_Close > cPrev1.HA_Close) {
+            const reds = countRedBefore(i - 1);
+            if (reds >= 3) {
+              buyRedTrend = reds;
+              buyTrendStartIdx = Math.max(0, i - 1 - reds);
+              buyCcLabel = '२ री हिरवी HA कॅन्डल (1st Flat Bottom CC)';
+            }
+          }
+        }
+
+        let sellGreenTrend = 0;
+        let sellCcLabel = '';
+        let sellTrendStartIdx = i;
+        if (!cCurr.IsGreen && cCurr.NoUpperWick) {
+          if (cPrev1.IsGreen) {
+            const greens = countGreenBefore(i);
+            if (greens >= 3) {
+              sellGreenTrend = greens;
+              sellTrendStartIdx = Math.max(0, i - greens);
+              sellCcLabel = '१ ली लाल HA कॅन्डल (Flat Top CC)';
+            }
+          } else if (!cPrev1.IsGreen && !cPrev1.NoUpperWick && cCurr.HA_Close < cPrev1.HA_Close) {
+            const greens = countGreenBefore(i - 1);
+            if (greens >= 3) {
+              sellGreenTrend = greens;
+              sellTrendStartIdx = Math.max(0, i - 1 - greens);
+              sellCcLabel = '२ री लाल HA कॅन्डल (1st Flat Top CC)';
+            }
+          }
+        }
+
+        if (buyRedTrend >= 3) {
+          const windowCandles = haCandles.slice(buyTrendStartIdx, i + 1);
+          const rawRsis = windowCandles.map((c) => c.RSI).filter((v) => v != null);
+          const haRsis = windowCandles.map((c) => c.HA_RSI).filter((v) => v != null);
+          const minRawRsi = rawRsis.length > 0 ? Math.min(...rawRsis) : 50;
+          const minHaRsi = haRsis.length > 0 ? Math.min(...haRsis) : 50;
+          if (minRawRsi > 20 && minHaRsi > 20) continue;
+
+          const setupRsi = round2(minRawRsi <= 20 ? minRawRsi : minHaRsi);
+          const entry = round2(cCurr.HA_Close);
+          const swingLow = Math.min(
+            cCurr.HA_Low,
+            cPrev1.HA_Low,
+            cCurr.Low != null ? cCurr.Low : cCurr.HA_Low,
+            cPrev1.Low != null ? cPrev1.Low : cPrev1.HA_Low
+          );
+          const buffer = Math.max(entry * 0.0015, 0.10);
+          const sl = round2(swingLow - buffer);
+          const minRisk = round2(Math.max(entry * 0.002, 0.10));
+          const risk = round2(Math.max(entry - sl, minRisk));
+          const tgt1 = round2(entry + risk * 1.5);
+          const tgt2 = round2(entry + risk * 2.5);
+          const atm = calculateATM(sym, entry);
+          const finalDayClose = haCandles[dayEndIdx].Close || entry;
+          const st = evaluateSignalStatus('BUY', entry, sl, tgt1, tgt2, haCandles.slice(0, dayEndIdx + 1), i, finalDayClose);
+          const sliceStart = Math.max(0, i - 14);
+          const sliceEnd = Math.min(n, dayEndIdx + 1);
+          const sigId = `TJ_HA_BUY_${sym.replace(/\s+/g, '_')}_${cCurr.FullDate.replace(/\s+/g, '')}_${barTime.replace(/[^0-9]/g, '')}`;
+
+          historicalSignals.push({
+            Id: sigId,
+            Symbol: sym,
+            Type: 'BUY',
+            Timeframe: '5m Heikin Ashi',
+            Category: category,
+            Timestamp: cCurr.Timestamp || 0,
+            SignalBarTime: barTime,
+            DisplayTime: `${barTime} IST`,
+            Time: `${cCurr.FullDate} ${barTime} IST (5m HA)`,
+            LTP: finalDayClose,
+            ATM: atm.ce,
+            Entry: entry,
+            StopLoss: sl,
+            RiskPoints: risk,
+            Target1: tgt1,
+            Target2: tgt2,
+            HA_Open: cCurr.HA_Open,
+            HA_High: cCurr.HA_High,
+            HA_Low: cCurr.HA_Low,
+            HA_Close: cCurr.HA_Close,
+            RSI: setupRsi,
+            SignalBarRSI: cCurr.RSI,
+            RSILabel: `${setupRsi}`,
+            PriorTrend: `${buyRedTrend} Red HA Candles`,
+            CCPosition: buyCcLabel,
+            Status: st.Status,
+            StatusText: st.StatusText,
+            SignalIndex: i - sliceStart,
+            Candles: haCandles.slice(sliceStart, sliceEnd)
+          });
+        } else if (sellGreenTrend >= 3) {
+          const windowCandles = haCandles.slice(sellTrendStartIdx, i + 1);
+          const rawRsis = windowCandles.map((c) => c.RSI).filter((v) => v != null);
+          const haRsis = windowCandles.map((c) => c.HA_RSI).filter((v) => v != null);
+          const maxRawRsi = rawRsis.length > 0 ? Math.max(...rawRsis) : 50;
+          const maxHaRsi = haRsis.length > 0 ? Math.max(...haRsis) : 50;
+          if (maxRawRsi < 80 && maxHaRsi < 80) continue;
+
+          const setupRsi = round2(maxRawRsi >= 80 ? maxRawRsi : maxHaRsi);
+          const entry = round2(cCurr.HA_Close);
+          const swingHigh = Math.max(
+            cCurr.HA_High,
+            cPrev1.HA_High,
+            cCurr.High != null ? cCurr.High : cCurr.HA_High,
+            cPrev1.High != null ? cPrev1.High : cPrev1.HA_High
+          );
+          const buffer = Math.max(entry * 0.0015, 0.10);
+          const sl = round2(swingHigh + buffer);
+          const minRisk = round2(Math.max(entry * 0.002, 0.10));
+          const risk = round2(Math.max(sl - entry, minRisk));
+          const tgt1 = round2(entry - risk * 1.5);
+          const tgt2 = round2(entry - risk * 2.5);
+          const atm = calculateATM(sym, entry);
+          const finalDayClose = haCandles[dayEndIdx].Close || entry;
+          const st = evaluateSignalStatus('SELL', entry, sl, tgt1, tgt2, haCandles.slice(0, dayEndIdx + 1), i, finalDayClose);
+          const sliceStart = Math.max(0, i - 14);
+          const sliceEnd = Math.min(n, dayEndIdx + 1);
+          const sigId = `TJ_HA_SELL_${sym.replace(/\s+/g, '_')}_${cCurr.FullDate.replace(/\s+/g, '')}_${barTime.replace(/[^0-9]/g, '')}`;
+
+          historicalSignals.push({
+            Id: sigId,
+            Symbol: sym,
+            Type: 'SELL',
+            Timeframe: '5m Heikin Ashi',
+            Category: category,
+            Timestamp: cCurr.Timestamp || 0,
+            SignalBarTime: barTime,
+            DisplayTime: `${barTime} IST`,
+            Time: `${cCurr.FullDate} ${barTime} IST (5m HA)`,
+            LTP: finalDayClose,
+            ATM: atm.pe,
+            Entry: entry,
+            StopLoss: sl,
+            RiskPoints: risk,
+            Target1: tgt1,
+            Target2: tgt2,
+            HA_Open: cCurr.HA_Open,
+            HA_High: cCurr.HA_High,
+            HA_Low: cCurr.HA_Low,
+            HA_Close: cCurr.HA_Close,
+            RSI: setupRsi,
+            SignalBarRSI: cCurr.RSI,
+            RSILabel: `${setupRsi}`,
+            PriorTrend: `${sellGreenTrend} Green HA Candles`,
+            CCPosition: sellCcLabel,
+            Status: st.Status,
+            StatusText: st.StatusText,
+            SignalIndex: i - sliceStart,
+            Candles: haCandles.slice(sliceStart, sliceEnd)
+          });
+        }
+      }
+    }));
+  }
+
+  historicalSignals.sort((a, b) => (b.Timestamp || 0) - (a.Timestamp || 0));
+  const data = {
+    date: targetDateStr,
+    updatedAt: `${targetDateStr} 15:30:00 IST`,
+    signals: historicalSignals
+  };
+  try {
+    fs.writeFileSync(fPath, JSON.stringify(data, null, 2), 'utf8');
+    console.log(`[Trade Setup Session] Backfilled ${historicalSignals.length} signals for session: ${targetDateStr}`);
+  } catch (e) {
+    console.warn(`[Trade Setup Session] Failed to write historical session ${targetDateStr}:`, e.message);
+  }
+  return data;
+}
+
+async function getTradejiniTradeSetup(requestedDate = null) {
+  const todayStr = ensureTodaySession();
+  const cleanReqDate = requestedDate ? requestedDate.replace(/_/g, ' ').trim() : null;
+
+  if (cleanReqDate && cleanReqDate !== todayStr) {
+    const fPath = getSessionFilePath(cleanReqDate);
+    let sessionData = null;
+    if (fs.existsSync(fPath)) {
+      try {
+        sessionData = JSON.parse(fs.readFileSync(fPath, 'utf8'));
+      } catch (e) {}
+    }
+    if (!sessionData || !Array.isArray(sessionData.signals) || sessionData.signals.length === 0) {
+      sessionData = await generateHistoricalSession(cleanReqDate);
+    }
+
+    const sigs = (sessionData && Array.isArray(sessionData.signals)) ? sessionData.signals : [];
+    sigs.sort((a, b) => (b.Timestamp || 0) - (a.Timestamp || 0));
+
+    return {
+      s: 'ok',
+      timeframe: '5m Heikin Ashi + RSI(7)',
+      sessionDate: cleanReqDate,
+      sessionWindow: '09:15 - 15:30 IST',
+      isHistorical: true,
+      isMarketHours: false,
+      updatedAt: (sessionData && sessionData.updatedAt) || '',
+      stats: {
+        total: sigs.length,
+        active: sigs.filter(s => s.Status === 'ACTIVE').length,
+        targets: sigs.filter(s => s.Status === 'TARGET_1_HIT' || s.Status === 'TARGET_2_HIT').length,
+        stopLosses: sigs.filter(s => s.Status === 'SL_HIT').length
+      },
+      indices: [],
+      signals: sigs
+    };
+  }
+
   if (cachedTradeSetup && Date.now() - lastTradeSetupMs < 15000) {
     return cachedTradeSetup;
   }
@@ -1212,6 +1691,8 @@ async function getTradejiniTradeSetup() {
   tradeSetupInFlight = (async () => {
     try {
       await getLiveQuotesSnapshot();
+
+      const todayStr = ensureTodaySession();
 
       // 1. Build live indices ribbon from real Tradejini quotes
       const indices = [];
@@ -1237,235 +1718,366 @@ async function getTradejiniTradeSetup() {
       // - SELL: 3+ consecutive Green HA candles + RSI(7) > 80 (Overbought) + First Flat-Top Red HA candle (NoUpperWick)
       // - Pure Heikin Ashi OHLC: Entry = HA_Close, SL = HA_Low (BUY) / HA_High (SELL)
       // - Keep all signals from the last 40 minutes (8 completed 5m bars) and mark live status
-      const fastSet = new Set([
-        'NIFTY 50', 'BANK NIFTY', 'SENSEX', 'FIN NIFTY', 'MIDCAP NIFTY',
-        'GOLD', 'CRUDEOIL',
-        ...INTRADAY_FAST_STOCKS
-      ]);
       const fullUniverse = [
-        ...Array.from(fastSet),
-        ...CORE_STOCKS.filter((s) => !fastSet.has(s))
+        ...CORE_INDICES.map(i => i.symbol),
+        ...CORE_MCX.map(m => m.symbol),
+        ...CORE_STOCKS
       ];
 
-      const signals = [];
-      for (const sym of fullUniverse) {
-        let cData = null;
-        if (fastSet.has(sym)) {
-          cData = await getTradejiniCandles(sym, '5', 7).catch(() => null);
-        } else {
-          // Use warmed-up 5m cache from raw60dCache or candleCache without blocking
-          const tjId = resolveTradejiniId(sym);
-          const c7 = candleCache.get(`${tjId}_5_7`);
-          const c60 = raw60dCache.get(`${tjId}_5_60`);
-          cData = (c7 && c7.data) || (c60 && c60.data) || null;
-        }
-        if (!cData || cData.s !== 'ok' || !Array.isArray(cData.candles) || cData.candles.length < 20) {
-          continue;
-        }
-
-        const haCandles = convertToHeikinAshi(cData.candles);
-        const n = haCandles.length;
-        const liveQuote = liveQuotesMap.get(sym);
-        const ltp = round2(liveQuote ? liveQuote.price : cData.candles[cData.candles.length - 1].close);
-
-        // Exclude the currently forming 5-minute bar if its 5-minute window has not closed yet
-        const lastBarTs = haCandles[n - 1].Timestamp || 0;
-        const isLastBarForming = (Date.now() - lastBarTs) < (5 * 60 * 1000);
-        const startBar = isLastBarForming ? n - 2 : n - 1;
-        // 40-minute lookback window = 8 completed 5-minute bars
-        const minBar = Math.max(8, startBar - 7);
-
-        const countRedBefore = (idx) => {
-          let cnt = 0;
-          for (let k = idx - 1; k >= 0; k--) {
-            if (!haCandles[k].IsGreen) cnt++;
-            else break;
+      const batchSize = 10;
+      for (let b = 0; b < fullUniverse.length; b += batchSize) {
+        const batch = fullUniverse.slice(b, b + batchSize);
+        await Promise.all(batch.map(async (sym) => {
+          let cData = await dhan.getDhanCandles(sym, '5', 3).catch(() => null);
+          if (!cData || cData.s !== 'ok' || !Array.isArray(cData.candles) || cData.candles.length < 20) {
+            cData = await getTradejiniCandles(sym, '5', 7).catch(() => null);
           }
-          return cnt;
-        };
-
-        const countGreenBefore = (idx) => {
-          let cnt = 0;
-          for (let k = idx - 1; k >= 0; k--) {
-            if (haCandles[k].IsGreen) cnt++;
-            else break;
+          if (!cData || cData.s !== 'ok' || !Array.isArray(cData.candles) || cData.candles.length < 20) {
+            return;
           }
-          return cnt;
-        };
 
-        const category = (sym.includes('NIFTY') || sym.includes('SENSEX'))
-          ? 'INDEX'
-          : (sym === 'GOLD' || sym === 'CRUDEOIL' ? 'MCX' : 'STOCK');
+          const haCandles = convertToHeikinAshi(cData.candles);
+          const n = haCandles.length;
+          const liveQuote = liveQuotesMap.get(sym);
+          const ltp = round2(liveQuote ? liveQuote.price : cData.candles[cData.candles.length - 1].close);
 
-        for (let i = startBar; i >= minBar; i--) {
-          const cCurr = haCandles[i];
-          const cPrev1 = haCandles[i - 1];
-
-          // BUY Check: cCurr must be a Flat-Bottom Green HA candle (IsGreen && NoLowerWick)
-          let buyRedTrend = 0;
-          let buyCcLabel = '';
-          let buyTrendStartIdx = i;
-          if (cCurr.IsGreen && cCurr.NoLowerWick) {
-            if (!cPrev1.IsGreen) {
-              const reds = countRedBefore(i);
-              if (reds >= 3) {
-                buyRedTrend = reds;
-                buyTrendStartIdx = Math.max(0, i - reds);
-                buyCcLabel = '१ ली हिरवी HA कॅन्डल (Flat Bottom CC)';
-              }
-            } else if (cPrev1.IsGreen && !cPrev1.NoLowerWick && cCurr.HA_Close > cPrev1.HA_Close) {
-              const reds = countRedBefore(i - 1);
-              if (reds >= 3) {
-                buyRedTrend = reds;
-                buyTrendStartIdx = Math.max(0, i - 1 - reds);
-                buyCcLabel = '२ री हिरवी HA कॅन्डल (1st Flat Bottom CC)';
-              }
+          // Exclude the currently forming 5-minute bar if its 5-minute window has not closed yet
+          const lastBarTs = haCandles[n - 1].Timestamp || 0;
+          const isLastBarForming = (Date.now() - lastBarTs) < (5 * 60 * 1000);
+          const startBar = isLastBarForming ? n - 2 : n - 1;
+          const countRedBefore = (idx) => {
+            let cnt = 0;
+            for (let k = idx - 1; k >= 0; k--) {
+              if (!haCandles[k].IsGreen) cnt++;
+              else break;
             }
-          }
+            return cnt;
+          };
 
-          // SELL Check: cCurr must be a Flat-Top Red HA candle (!IsGreen && NoUpperWick)
-          let sellGreenTrend = 0;
-          let sellCcLabel = '';
-          let sellTrendStartIdx = i;
-          if (!cCurr.IsGreen && cCurr.NoUpperWick) {
-            if (cPrev1.IsGreen) {
-              const greens = countGreenBefore(i);
-              if (greens >= 3) {
-                sellGreenTrend = greens;
-                sellTrendStartIdx = Math.max(0, i - greens);
-                sellCcLabel = '१ ली लाल HA कॅन्डल (Flat Top CC)';
-              }
-            } else if (!cPrev1.IsGreen && !cPrev1.NoUpperWick && cCurr.HA_Close < cPrev1.HA_Close) {
-              const greens = countGreenBefore(i - 1);
-              if (greens >= 3) {
-                sellGreenTrend = greens;
-                sellTrendStartIdx = Math.max(0, i - 1 - greens);
-                sellCcLabel = '२ री लाल HA कॅन्डल (1st Flat Top CC)';
-              }
+          const countGreenBefore = (idx) => {
+            let cnt = 0;
+            for (let k = idx - 1; k >= 0; k--) {
+              if (haCandles[k].IsGreen) cnt++;
+              else break;
             }
-          }
+            return cnt;
+          };
 
-          if (buyRedTrend >= 3) {
-            // Strict RSI(7) < 20 (Oversold) check across the prior Red trend & reversal turn
-            const windowCandles = haCandles.slice(buyTrendStartIdx, i + 1);
-            const rawRsis = windowCandles.map((c) => c.RSI).filter((v) => v != null);
-            const haRsis = windowCandles.map((c) => c.HA_RSI).filter((v) => v != null);
-            const minRawRsi = rawRsis.length > 0 ? Math.min(...rawRsis) : 50;
-            const minHaRsi = haRsis.length > 0 ? Math.min(...haRsis) : 50;
-            const isOversoldBelow20 = minRawRsi < 20 || minHaRsi < 20;
+          const category = (sym.includes('NIFTY') || sym.includes('SENSEX'))
+            ? 'INDEX'
+            : (sym === 'GOLD' || sym === 'CRUDEOIL' ? 'MCX' : 'STOCK');
 
-            if (!isOversoldBelow20) {
+          const maxSessionTime = (sym === 'GOLD' || sym === 'CRUDEOIL') ? '23:30' : '15:30';
+
+          for (let i = startBar; i >= 1; i--) {
+            const cCurr = haCandles[i];
+            const cPrev1 = haCandles[i - 1];
+
+            // 1. STRICT DAY BOUNDARY: Stop going back if candle is not from today's session!
+            if (cCurr.FullDate !== todayStr) {
+              break;
+            }
+
+            // 2. STRICT SESSION HOURS: Only candles between 09:15 and 15:30 (or 23:30 for MCX)
+            const barTime = (cCurr.Time || '').replace(' IST', '').trim();
+            if (barTime < '09:15' || barTime > maxSessionTime) {
               continue;
             }
 
-            const setupRsi = round2(minRawRsi < 20 ? minRawRsi : minHaRsi);
-            const entry = round2(cCurr.HA_Close);
-            const sl = round2(cCurr.HA_Low);
-            const risk = round2(Math.max(entry - sl, 0.05));
-            const tgt1 = round2(entry + risk * 1.5);
-            const tgt2 = round2(entry + risk * 2.5);
-            const atm = calculateATM(sym, entry);
-            const st = evaluateSignalStatus('BUY', entry, sl, tgt1, tgt2, haCandles, i, ltp);
-            const sliceStart = Math.max(0, i - 14);
-            const sliceEnd = Math.min(n, startBar + 1);
-
-            signals.push({
-              Id: `TJ_HA_BUY_${sym.replace(/\s+/g, '_')}_${cCurr.FullDate.replace(/\s+/g, '')}_${cCurr.Time}`,
-              Symbol: sym,
-              Type: 'BUY',
-              Timeframe: '5m Heikin Ashi',
-              Category: category,
-              Timestamp: cCurr.Timestamp || 0,
-              SignalBarTime: cCurr.Time,
-              Time: `${cCurr.FullDate} ${cCurr.Time} IST (5m HA)`,
-              LTP: ltp,
-              ATM: atm.ce,
-              Entry: entry,
-              StopLoss: sl,
-              RiskPoints: risk,
-              Target1: tgt1,
-              Target2: tgt2,
-              HA_Open: cCurr.HA_Open,
-              HA_High: cCurr.HA_High,
-              HA_Low: cCurr.HA_Low,
-              HA_Close: cCurr.HA_Close,
-              RSI: setupRsi,
-              SignalBarRSI: cCurr.RSI,
-              RSILabel: `${setupRsi} (< 20 Oversold)`,
-              PriorTrend: `${buyRedTrend} Red HA Candles`,
-              CCPosition: buyCcLabel,
-              Status: st.Status,
-              StatusText: st.StatusText,
-              SignalIndex: i - sliceStart,
-              Candles: haCandles.slice(sliceStart, sliceEnd)
-            });
-          } else if (sellGreenTrend >= 3) {
-            // Strict RSI(7) > 80 (Overbought) check across the prior Green trend & reversal turn
-            const windowCandles = haCandles.slice(sellTrendStartIdx, i + 1);
-            const rawRsis = windowCandles.map((c) => c.RSI).filter((v) => v != null);
-            const haRsis = windowCandles.map((c) => c.HA_RSI).filter((v) => v != null);
-            const maxRawRsi = rawRsis.length > 0 ? Math.max(...rawRsis) : 50;
-            const maxHaRsi = haRsis.length > 0 ? Math.max(...haRsis) : 50;
-            const isOverboughtAbove80 = maxRawRsi > 80 || maxHaRsi > 80;
-
-            if (!isOverboughtAbove80) {
-              continue;
+            // BUY Check: cCurr must be a Flat-Bottom Green HA candle (IsGreen && NoLowerWick)
+            let buyRedTrend = 0;
+            let buyCcLabel = '';
+            let buyTrendStartIdx = i;
+            if (cCurr.IsGreen && cCurr.NoLowerWick) {
+              if (!cPrev1.IsGreen) {
+                const reds = countRedBefore(i);
+                if (reds >= 3) {
+                  buyRedTrend = reds;
+                  buyTrendStartIdx = Math.max(0, i - reds);
+                  buyCcLabel = '१ ली हिरवी HA कॅन्डल (Flat Bottom CC)';
+                }
+              } else if (cPrev1.IsGreen && !cPrev1.NoLowerWick && cCurr.HA_Close > cPrev1.HA_Close) {
+                const reds = countRedBefore(i - 1);
+                if (reds >= 3) {
+                  buyRedTrend = reds;
+                  buyTrendStartIdx = Math.max(0, i - 1 - reds);
+                  buyCcLabel = '२ री हिरवी HA कॅन्डल (1st Flat Bottom CC)';
+                }
+              }
             }
 
-            const setupRsi = round2(maxRawRsi > 80 ? maxRawRsi : maxHaRsi);
-            const entry = round2(cCurr.HA_Close);
-            const sl = round2(cCurr.HA_High);
-            const risk = round2(Math.max(sl - entry, 0.05));
-            const tgt1 = round2(entry - risk * 1.5);
-            const tgt2 = round2(entry - risk * 2.5);
-            const atm = calculateATM(sym, entry);
-            const st = evaluateSignalStatus('SELL', entry, sl, tgt1, tgt2, haCandles, i, ltp);
-            const sliceStart = Math.max(0, i - 14);
-            const sliceEnd = Math.min(n, startBar + 1);
+            // SELL Check: cCurr must be a Flat-Top Red HA candle (!IsGreen && NoUpperWick)
+            let sellGreenTrend = 0;
+            let sellCcLabel = '';
+            let sellTrendStartIdx = i;
+            if (!cCurr.IsGreen && cCurr.NoUpperWick) {
+              if (cPrev1.IsGreen) {
+                const greens = countGreenBefore(i);
+                if (greens >= 3) {
+                  sellGreenTrend = greens;
+                  sellTrendStartIdx = Math.max(0, i - greens);
+                  sellCcLabel = '१ ली लाल HA कॅन्डल (Flat Top CC)';
+                }
+              } else if (!cPrev1.IsGreen && !cPrev1.NoUpperWick && cCurr.HA_Close < cPrev1.HA_Close) {
+                const greens = countGreenBefore(i - 1);
+                if (greens >= 3) {
+                  sellGreenTrend = greens;
+                  sellTrendStartIdx = Math.max(0, i - 1 - greens);
+                  sellCcLabel = '२ री लाल HA कॅन्डल (1st Flat Top CC)';
+                }
+              }
+            }
 
-            signals.push({
-              Id: `TJ_HA_SELL_${sym.replace(/\s+/g, '_')}_${cCurr.FullDate.replace(/\s+/g, '')}_${cCurr.Time}`,
-              Symbol: sym,
-              Type: 'SELL',
-              Timeframe: '5m Heikin Ashi',
-              Category: category,
-              Timestamp: cCurr.Timestamp || 0,
-              SignalBarTime: cCurr.Time,
-              Time: `${cCurr.FullDate} ${cCurr.Time} IST (5m HA)`,
-              LTP: ltp,
-              ATM: atm.pe,
-              Entry: entry,
-              StopLoss: sl,
-              RiskPoints: risk,
-              Target1: tgt1,
-              Target2: tgt2,
-              HA_Open: cCurr.HA_Open,
-              HA_High: cCurr.HA_High,
-              HA_Low: cCurr.HA_Low,
-              HA_Close: cCurr.HA_Close,
-              RSI: setupRsi,
-              SignalBarRSI: cCurr.RSI,
-              RSILabel: `${setupRsi} (> 80 Overbought)`,
-              PriorTrend: `${sellGreenTrend} Green HA Candles`,
-              CCPosition: sellCcLabel,
-              Status: st.Status,
-              StatusText: st.StatusText,
-              SignalIndex: i - sliceStart,
-              Candles: haCandles.slice(sliceStart, sliceEnd)
-            });
+            if (buyRedTrend >= 3) {
+              // Original Strict RSI(7) <= 20 (Oversold) check across the prior Red trend & reversal turn
+              const windowCandles = haCandles.slice(buyTrendStartIdx, i + 1);
+              const rawRsis = windowCandles.map((c) => c.RSI).filter((v) => v != null);
+              const haRsis = windowCandles.map((c) => c.HA_RSI).filter((v) => v != null);
+              const minRawRsi = rawRsis.length > 0 ? Math.min(...rawRsis) : 50;
+              const minHaRsi = haRsis.length > 0 ? Math.min(...haRsis) : 50;
+              const isOversoldBelow20 = minRawRsi <= 20 || minHaRsi <= 20;
+
+              if (!isOversoldBelow20) {
+                continue;
+              }
+
+              const setupRsi = round2(minRawRsi <= 20 ? minRawRsi : minHaRsi);
+              const entry = round2(cCurr.HA_Close);
+              // Swing Low: minimum of Confirmation Candle and Preceding Pivot Candle with technical buffer
+              const swingLow = Math.min(
+                cCurr.HA_Low,
+                cPrev1.HA_Low,
+                cCurr.Low != null ? cCurr.Low : cCurr.HA_Low,
+                cPrev1.Low != null ? cPrev1.Low : cPrev1.HA_Low
+              );
+              const buffer = Math.max(entry * 0.0015, 0.10);
+              const sl = round2(swingLow - buffer);
+              // Ensure minimum sensible risk buffer (at least 0.2% of stock price or 0.10 pts)
+              const minRisk = round2(Math.max(entry * 0.002, 0.10));
+              const risk = round2(Math.max(entry - sl, minRisk));
+              const tgt1 = round2(entry + risk * 1.5);
+              const tgt2 = round2(entry + risk * 2.5);
+              const atm = calculateATM(sym, entry);
+              const st = evaluateSignalStatus('BUY', entry, sl, tgt1, tgt2, haCandles, i, ltp);
+              const sliceStart = Math.max(0, i - 14);
+              const sliceEnd = Math.min(n, startBar + 1);
+
+              const sigId = `TJ_HA_BUY_${sym.replace(/\s+/g, '_')}_${cCurr.FullDate.replace(/\s+/g, '')}_${barTime.replace(/[^0-9]/g, '')}`;
+              const existing = activeSessionSignals.get(sigId);
+
+              if (existing) {
+                existing.LTP = ltp;
+                existing.StopLoss = sl;
+                existing.RiskPoints = risk;
+                existing.Target1 = tgt1;
+                existing.Target2 = tgt2;
+                // Never downgrade an achieved target!
+                if (existing.Status === 'TARGET_2_HIT') {
+                  // Keep TARGET_2_HIT
+                } else if (existing.Status === 'TARGET_1_HIT') {
+                  if (st.Status === 'TARGET_2_HIT') {
+                    existing.Status = 'TARGET_2_HIT';
+                    existing.StatusText = st.StatusText;
+                  }
+                } else {
+                  existing.Status = st.Status;
+                  existing.StatusText = st.StatusText;
+                }
+                existing.Candles = haCandles.slice(sliceStart, sliceEnd);
+              } else {
+                activeSessionSignals.set(sigId, {
+                  Id: sigId,
+                  Symbol: sym,
+                  Type: 'BUY',
+                  Timeframe: '5m Heikin Ashi',
+                  Category: category,
+                  Timestamp: cCurr.Timestamp || 0,
+                  SignalBarTime: barTime,
+                  DisplayTime: `${barTime} IST`,
+                  Time: `${cCurr.FullDate} ${barTime} IST (5m HA)`,
+                  LTP: ltp,
+                  ATM: atm.ce,
+                  Entry: entry,
+                  StopLoss: sl,
+                  RiskPoints: risk,
+                  Target1: tgt1,
+                  Target2: tgt2,
+                  HA_Open: cCurr.HA_Open,
+                  HA_High: cCurr.HA_High,
+                  HA_Low: cCurr.HA_Low,
+                  HA_Close: cCurr.HA_Close,
+                  RSI: setupRsi,
+                  SignalBarRSI: cCurr.RSI,
+                  RSILabel: `${setupRsi}`,
+                  PriorTrend: `${buyRedTrend} Red HA Candles`,
+                  CCPosition: buyCcLabel,
+                  Status: st.Status,
+                  StatusText: st.StatusText,
+                  SignalIndex: i - sliceStart,
+                  Candles: haCandles.slice(sliceStart, sliceEnd)
+                });
+              }
+            } else if (sellGreenTrend >= 3) {
+              // Original Strict RSI(7) >= 80 (Overbought) check across the prior Green trend & reversal turn
+              const windowCandles = haCandles.slice(sellTrendStartIdx, i + 1);
+              const rawRsis = windowCandles.map((c) => c.RSI).filter((v) => v != null);
+              const haRsis = windowCandles.map((c) => c.HA_RSI).filter((v) => v != null);
+              const maxRawRsi = rawRsis.length > 0 ? Math.max(...rawRsis) : 50;
+              const maxHaRsi = haRsis.length > 0 ? Math.max(...haRsis) : 50;
+              const isOverboughtAbove80 = maxRawRsi >= 80 || maxHaRsi >= 80;
+
+              if (!isOverboughtAbove80) {
+                continue;
+              }
+
+              const setupRsi = round2(maxRawRsi >= 80 ? maxRawRsi : maxHaRsi);
+              const entry = round2(cCurr.HA_Close);
+              // Swing High: maximum of Confirmation Candle and Preceding Pivot Candle with technical buffer
+              const swingHigh = Math.max(
+                cCurr.HA_High,
+                cPrev1.HA_High,
+                cCurr.High != null ? cCurr.High : cCurr.HA_High,
+                cPrev1.High != null ? cPrev1.High : cPrev1.HA_High
+              );
+              const buffer = Math.max(entry * 0.0015, 0.10);
+              const sl = round2(swingHigh + buffer);
+              // Ensure minimum sensible risk buffer (at least 0.2% of stock price or 0.10 pts)
+              const minRisk = round2(Math.max(entry * 0.002, 0.10));
+              const risk = round2(Math.max(sl - entry, minRisk));
+              const tgt1 = round2(entry - risk * 1.5);
+              const tgt2 = round2(entry - risk * 2.5);
+              const atm = calculateATM(sym, entry);
+              const st = evaluateSignalStatus('SELL', entry, sl, tgt1, tgt2, haCandles, i, ltp);
+              const sliceStart = Math.max(0, i - 14);
+              const sliceEnd = Math.min(n, startBar + 1);
+
+              const sigId = `TJ_HA_SELL_${sym.replace(/\s+/g, '_')}_${cCurr.FullDate.replace(/\s+/g, '')}_${barTime.replace(/[^0-9]/g, '')}`;
+              const existing = activeSessionSignals.get(sigId);
+
+              if (existing) {
+                existing.LTP = ltp;
+                existing.StopLoss = sl;
+                existing.RiskPoints = risk;
+                existing.Target1 = tgt1;
+                existing.Target2 = tgt2;
+                // Never downgrade an achieved target!
+                if (existing.Status === 'TARGET_2_HIT') {
+                  // Keep TARGET_2_HIT
+                } else if (existing.Status === 'TARGET_1_HIT') {
+                  if (st.Status === 'TARGET_2_HIT') {
+                    existing.Status = 'TARGET_2_HIT';
+                    existing.StatusText = st.StatusText;
+                  }
+                } else {
+                  existing.Status = st.Status;
+                  existing.StatusText = st.StatusText;
+                }
+                existing.Candles = haCandles.slice(sliceStart, sliceEnd);
+              } else {
+                activeSessionSignals.set(sigId, {
+                  Id: sigId,
+                  Symbol: sym,
+                  Type: 'SELL',
+                  Timeframe: '5m Heikin Ashi',
+                  Category: category,
+                  Timestamp: cCurr.Timestamp || 0,
+                  SignalBarTime: barTime,
+                  DisplayTime: `${barTime} IST`,
+                  Time: `${cCurr.FullDate} ${barTime} IST (5m HA)`,
+                  LTP: ltp,
+                  ATM: atm.pe,
+                  Entry: entry,
+                  StopLoss: sl,
+                  RiskPoints: risk,
+                  Target1: tgt1,
+                  Target2: tgt2,
+                  HA_Open: cCurr.HA_Open,
+                  HA_High: cCurr.HA_High,
+                  HA_Low: cCurr.HA_Low,
+                  HA_Close: cCurr.HA_Close,
+                  RSI: setupRsi,
+                  SignalBarRSI: cCurr.RSI,
+                  RSILabel: `${setupRsi}`,
+                  PriorTrend: `${sellGreenTrend} Green HA Candles`,
+                  CCPosition: sellCcLabel,
+                  Status: st.Status,
+                  StatusText: st.StatusText,
+                  SignalIndex: i - sliceStart,
+                  Candles: haCandles.slice(sliceStart, sliceEnd)
+                });
+              }
+            }
+          }
+        }));
+      }
+
+      // Live tick pass for all active session signals
+      for (const [id, sig] of activeSessionSignals.entries()) {
+        const q = liveQuotesMap.get(sig.Symbol);
+        if (q && q.price > 0) {
+          sig.LTP = round2(q.price);
+          if (sig.Type === 'BUY') {
+            if (sig.Status === 'ACTIVE') {
+              if (sig.LTP >= sig.Target2) {
+                sig.Status = 'TARGET_2_HIT';
+                sig.StatusText = '🎯 टार्गेट २ पूर्ण (Target 2 Hit)';
+              } else if (sig.LTP >= sig.Target1) {
+                sig.Status = 'TARGET_1_HIT';
+                sig.StatusText = '✅ टार्गेट १ पूर्ण (Target 1 Hit)';
+              } else if (sig.LTP <= sig.StopLoss) {
+                sig.Status = 'SL_HIT';
+                sig.StatusText = '🛑 स्टॉप लॉस हिट (SL Hit)';
+              }
+            } else if (sig.Status === 'TARGET_1_HIT' && sig.LTP >= sig.Target2) {
+              sig.Status = 'TARGET_2_HIT';
+              sig.StatusText = '🎯 टार्गेट २ पूर्ण (Target 2 Hit)';
+            }
+          } else {
+            if (sig.Status === 'ACTIVE') {
+              if (sig.LTP <= sig.Target2) {
+                sig.Status = 'TARGET_2_HIT';
+                sig.StatusText = '🎯 टार्गेट २ पूर्ण (Target 2 Hit)';
+              } else if (sig.LTP <= sig.Target1) {
+                sig.Status = 'TARGET_1_HIT';
+                sig.StatusText = '✅ टार्गेट १ पूर्ण (Target 1 Hit)';
+              } else if (sig.LTP >= sig.StopLoss) {
+                sig.Status = 'SL_HIT';
+                sig.StatusText = '🛑 स्टॉप लॉस हिट (SL Hit)';
+              }
+            } else if (sig.Status === 'TARGET_1_HIT' && sig.LTP <= sig.Target2) {
+              sig.Status = 'TARGET_2_HIT';
+              sig.StatusText = '🎯 टार्गेट २ पूर्ण (Target 2 Hit)';
+            }
           }
         }
       }
 
+      saveTodaySession();
+
+      const signals = Array.from(activeSessionSignals.values());
+      // Chronological sort: newest signal first (by timestamp descending)
       signals.sort((a, b) => (b.Timestamp || 0) - (a.Timestamp || 0));
+
+      const activeCount = signals.filter(s => s.Status === 'ACTIVE').length;
+      const targetCount = signals.filter(s => s.Status === 'TARGET_1_HIT' || s.Status === 'TARGET_2_HIT').length;
+      const slCount = signals.filter(s => s.Status === 'SL_HIT').length;
 
       const result = {
         s: 'ok',
         timeframe: '5m Heikin Ashi + RSI(7)',
+        sessionDate: todayStr,
+        sessionWindow: '09:15 - 15:30 IST',
+        isMarketHours: isIndianMarketHours(),
         updatedAt: formatIst(Date.now()).fullDateTime,
+        stats: {
+          total: signals.length,
+          active: activeCount,
+          targets: targetCount,
+          sl: slCount
+        },
         indices,
         signals,
-        source: 'Tradejini CubePlus v2 Live 5M Heikin Ashi + RSI(7) (BUY < 20 | SELL > 80)'
+        source: 'Tradejini CubePlus v2 Live 5M Session-Isolated Engine (09:15 - 15:30 IST)'
       };
       cachedTradeSetup = result;
       lastTradeSetupMs = Date.now();
@@ -1535,9 +2147,10 @@ function scanDailyCandlesForAaa(sym, dailyCandles, minTrend = 3, lookbackDays = 
   const liveQ = liveQuotesMap.get(sym.toUpperCase().trim());
   const latestClose = round2((liveQ && liveQ.price) ? liveQ.price : dailyCandles[n - 1].close);
 
-  // Morning Calculation Gate:
-  // Between 09:15 IST and 15:29 IST, today's daily candle is still forming intraday.
-  // Only scan COMPLETED Daily (1D) candles so morning setups remain locked & accurate all day.
+  // Market Status & Reference Date Gate:
+  // During live market hours (09:15 - 15:30 IST), if dailyCandles contains today's bar,
+  // it is still forming intraday. The latest COMPLETED/CLOSED trade is yesterday's session (n - 2).
+  // After market close (>= 15:30 / 16:00 IST), today's bar is 100% completed & closed (n - 1).
   const nowIst = formatIst(Date.now());
   const hhmmNum = Number(nowIst.hh) * 100 + Number(nowIst.mm);
   const isMarketOpenIntraday = hhmmNum >= 915 && hhmmNum < 1530;
@@ -1545,10 +2158,13 @@ function scanDailyCandlesForAaa(sym, dailyCandles, minTrend = 3, lookbackDays = 
   const endIdx = (isMarketOpenIntraday && lastCandleIsToday) ? n - 2 : n - 1;
 
   if (endIdx < minTrend) return [];
-  const minIdx = Math.max(minTrend, endIdx - lookbackDays + 1);
+  // Default cleanLookback = 1: Strictly scans the single latest closed daily session!
+  // This guarantees signals point directly to TOMORROW'S market with zero intermediate bars.
+  const cleanLookback = Math.max(parseInt(lookbackDays, 10) || 1, 1);
+  const minIdx = Math.max(minTrend, endIdx - cleanLookback + 1);
   const matches = [];
 
-  // Helper: Measure Uptrend ending at motherIdx (allows at most 1 small pullback/doji pause candle mid-trend, matching Finanthropist slides)
+  // Helper: Measure Uptrend ending at motherIdx (allows at most 1 small pullback/doji pause candle mid-trend)
   function measureUptrend(motherIdx) {
     if (motherIdx < 1) return 0;
     const cMother = dailyCandles[motherIdx];
@@ -1562,7 +2178,7 @@ function scanDailyCandlesForAaa(sym, dailyCandles, minTrend = 3, lookbackDays = 
       if (ck.close > ck.open) {
         greenCount++;
         startIdx = k;
-      } else if (k < motherIdx && !pauseUsed && k > 0 && dailyCandles[k - 1].close > dailyCandles[k - 1].open && ckBody <= Math.abs(cMother.close - cMother.open) * 0.55) {
+      } else if (k < motherIdx && !pauseUsed && k > 0 && ckBody <= Math.abs(cMother.close - cMother.open) * 0.65) {
         pauseUsed = true;
       } else {
         break;
@@ -1570,14 +2186,11 @@ function scanDailyCandlesForAaa(sym, dailyCandles, minTrend = 3, lookbackDays = 
     }
     if (greenCount < minTrend) return 0;
     const cStart = dailyCandles[startIdx];
-    if (cMother.close <= cStart.open || cMother.close <= cStart.close) return 0;
-    for (let k = startIdx; k < motherIdx; k++) {
-      if (dailyCandles[k].close > cMother.high) return 0;
-    }
+    if (cMother.close <= cStart.open && cMother.close <= cStart.close) return 0;
     return greenCount;
   }
 
-  // Helper: Measure Downtrend ending at motherIdx (allows at most 1 small doji/pause candle mid-trend, matching Finanthropist slides)
+  // Helper: Measure Downtrend ending at motherIdx (allows at most 1 small doji/pause candle mid-trend)
   function measureDowntrend(motherIdx) {
     if (motherIdx < 1) return 0;
     const cMother = dailyCandles[motherIdx];
@@ -1591,7 +2204,7 @@ function scanDailyCandlesForAaa(sym, dailyCandles, minTrend = 3, lookbackDays = 
       if (ck.close < ck.open) {
         redCount++;
         startIdx = k;
-      } else if (k < motherIdx && !pauseUsed && k > 0 && dailyCandles[k - 1].close < dailyCandles[k - 1].open && ckBody <= Math.abs(cMother.close - cMother.open) * 0.55) {
+      } else if (k < motherIdx && !pauseUsed && k > 0 && ckBody <= Math.abs(cMother.close - cMother.open) * 0.65) {
         pauseUsed = true;
       } else {
         break;
@@ -1599,10 +2212,7 @@ function scanDailyCandlesForAaa(sym, dailyCandles, minTrend = 3, lookbackDays = 
     }
     if (redCount < minTrend) return 0;
     const cStart = dailyCandles[startIdx];
-    if (cMother.close >= cStart.open || cMother.close >= cStart.close) return 0;
-    for (let k = startIdx; k < motherIdx; k++) {
-      if (dailyCandles[k].close < cMother.low) return 0;
-    }
+    if (cMother.close >= cStart.open && cMother.close >= cStart.close) return 0;
     return redCount;
   }
 
@@ -1966,22 +2576,31 @@ function getAaaScanUniverse() {
   ];
 }
 
-// Warm up the 60-day Daily OHLCV cache for the entire stock universe each morning
+// Warm up the 60-day Daily OHLCV cache for the entire stock universe each morning & at 4:00 PM EOD
 async function warmupDailyAaaUniverse(force = false) {
   if (morningWarmupInFlight) return morningWarmupInFlight;
   morningWarmupInFlight = (async () => {
     try {
       const scanSymbols = getAaaScanUniverse();
       if (force) {
+        dailyUniverseCandlesMap.clear();
         raw60dCache.clear();
         screenerCache.clear();
       }
       for (const sym of scanSymbols) {
-        await getTradejiniCandles(sym, 'D', 60).catch(() => null);
+        if (!force && dailyUniverseCandlesMap.has(sym)) continue;
+        try {
+          const cData = await getTradejiniCandles(sym, 'D', 60);
+          if (cData && cData.s === 'ok' && Array.isArray(cData.candles) && cData.candles.length > 0) {
+            dailyUniverseCandlesMap.set(sym, cData.candles);
+          }
+        } catch (e) {}
+        // Gentle pacing to prevent rate limiting (429)
+        await new Promise(r => setTimeout(r, 50));
       }
       screenerCache.clear();
       lastMorningScanDate = formatIst(Date.now()).fullDate;
-      console.log(`[AAA Daily Morning Scanner] Completed Daily (1D) scan across ${scanSymbols.length} instruments for ${lastMorningScanDate}`);
+      console.log(`[AAA Daily Scanner] Completed Daily (1D) scan across ${dailyUniverseCandlesMap.size}/${scanSymbols.length} instruments for ${lastMorningScanDate}`);
     } finally {
       morningWarmupInFlight = null;
     }
@@ -1989,18 +2608,20 @@ async function warmupDailyAaaUniverse(force = false) {
   return morningWarmupInFlight;
 }
 
-async function getTradejiniAaaScreener(days = 10, minTrend = 3) {
-  const cleanDays = Math.min(Math.max(parseInt(days, 10) || 10, 1), 30);
-  const cleanTrend = Math.min(Math.max(parseInt(minTrend, 10) || 3, 2), 8);
+async function getTradejiniAaaScreener(days = 1, minTrend = 3) {
+  // Default cleanDays = 1: Strictly inspects the single latest closed daily candle!
+  // This gives the trader actionable signals for TOMORROW'S market with zero intermediate bars.
+  const cleanDays = Math.min(Math.max(parseInt(days, 10) || 1, 1), 30);
+  const cleanTrend = Math.min(Math.max(parseInt(minTrend, 10) || 3, 3), 8);
   const scanSymbols = getAaaScanUniverse();
-  const cacheKey = `DAILY_${cleanDays}_${cleanTrend}_${raw60dCache.size}`;
+  const cacheKey = `DAILY_${cleanDays}_${cleanTrend}_${dailyUniverseCandlesMap.size}`;
   const cached = screenerCache.get(cacheKey);
-  if (cached && Date.now() - cached.ts < 30000 && raw60dCache.size >= 40) {
+  if (cached && Date.now() - cached.ts < 60000 && dailyUniverseCandlesMap.size >= 40) {
     return cached.data;
   }
 
   // Trigger background warmup if not all symbols are cached yet
-  if (raw60dCache.size < scanSymbols.length && !morningWarmupInFlight) {
+  if (dailyUniverseCandlesMap.size < scanSymbols.length && !morningWarmupInFlight) {
     warmupDailyAaaUniverse(false).catch(() => {});
   }
 
@@ -2008,19 +2629,13 @@ async function getTradejiniAaaScreener(days = 10, minTrend = 3) {
   let scannedCount = 0;
 
   for (const sym of scanSymbols) {
-    const tradejiniId = resolveTradejiniId(sym);
-    const rawCacheKey = `${tradejiniId}_5_60`;
-    const cachedRaw = raw60dCache.get(rawCacheKey);
+    let dailyCandles = dailyUniverseCandlesMap.get(sym);
 
-    let dailyCandles = null;
-    const liveQ = liveQuotesMap.get(sym.toUpperCase().trim());
-    if (cachedRaw && cachedRaw.data && Array.isArray(cachedRaw.data.candles) && cachedRaw.data.candles.length > 0) {
-      dailyCandles = aggregateBarsToDaily(cachedRaw.data.candles, liveQ);
-    } else if (scannedCount < 35) {
-      // Only fetch synchronously if cold cache has fewer than 35 symbols
+    if (!dailyCandles && scannedCount < 40) {
       const cData = await getTradejiniCandles(sym, 'D', 60).catch(() => null);
-      if (cData && cData.s === 'ok' && Array.isArray(cData.candles)) {
+      if (cData && cData.s === 'ok' && Array.isArray(cData.candles) && cData.candles.length > 0) {
         dailyCandles = cData.candles;
+        dailyUniverseCandlesMap.set(sym, dailyCandles);
       }
     }
 
@@ -2036,15 +2651,20 @@ async function getTradejiniAaaScreener(days = 10, minTrend = 3) {
   // Sort newest daily setups first
   rows.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
 
+  const nowIst = formatIst(Date.now());
+  const hhmmNum = Number(nowIst.hh) * 100 + Number(nowIst.mm);
+  const isMarketOpen = hhmmNum >= 915 && hhmmNum < 1530;
+
   const result = {
     s: 'ok',
     timeframe: '1D (Daily Timeframe)',
-    updatedAt: `${formatIst(Date.now()).fullDateTime} (1D Daily)`,
+    referenceDate: isMarketOpen ? 'कालचा क्लोज (Yesterday Close)' : 'आजचा क्लोज / उद्याच्या ट्रेडसाठी (Today Close - For Tomorrow)',
+    updatedAt: `${nowIst.fullDateTime} (1D Daily)`,
     totalScanned: Math.max(scannedCount, scanSymbols.length),
     warmedCount: scannedCount,
     foundCount: rows.length,
     rows,
-    source: 'Tradejini CubePlus v2 Live Daily (1D) Scanner'
+    source: 'Tradejini & DhanHQ v2 Live Daily (1D) AAA Engine'
   };
   screenerCache.set(cacheKey, { ts: Date.now(), data: result });
   return result;
@@ -2618,7 +3238,7 @@ const server = http.createServer(async (req, res) => {
       res.write(`data: ${JSON.stringify({
         type: 'snapshot',
         connected: tjStreamConnected,
-        marketStatus: latestMarketStatus,
+        marketStatus: getCurrentMarketStatus(),
         quotes: currentQuotes
       })}\n\n`);
 
@@ -2633,16 +3253,19 @@ const server = http.createServer(async (req, res) => {
     // API: Dynamic Symbol Subscription to WebSocket
     if (pathname === '/api/tradejini/subscribe') {
       const sym = (parsedUrl.searchParams.get('symbol') || '').toUpperCase().trim();
+      if (sym) {
+        dhan.dhanStream.subscribe(sym);
+      }
       const token = resolveStreamTokenFromSymbol(sym);
       if (token && tjStreamClient && tjStreamConnected) {
         if (!tjStreamActiveTokens.has(token)) {
           tjStreamActiveTokens.add(token);
           tjStreamClient.subscribeL1(Array.from(tjStreamActiveTokens));
+          tjStreamClient.subscribeL1Snapshot(Array.from(tjStreamActiveTokens));
         }
-        sendJson(res, 200, { s: 'ok', symbol: sym, streamToken: token, subscribed: true });
-      } else {
-        sendJson(res, 200, { s: 'ok', symbol: sym, streamToken: token || null, subscribed: false });
       }
+      const quote = liveQuotesMap.get(sym) || (dhan.dhanStream.latestQuotes.get(sym) || null);
+      sendJson(res, 200, { s: 'ok', symbol: sym, streamToken: token || null, subscribed: true, quote });
       return;
     }
 
@@ -2653,14 +3276,26 @@ const server = http.createServer(async (req, res) => {
         connected: tjStreamConnected,
         activeTokensCount: tjStreamActiveTokens.size,
         activeClients: sseStreamClients.size,
-        marketStatus: latestMarketStatus
+        marketStatus: getCurrentMarketStatus()
       });
       return;
     }
 
-    // 4. API: Live 5-Minute Heikin Ashi Trade Setup Scanner
+    // 4a. API: Available Session Dates for Trade Setup Calendar
+    if (pathname === '/api/tradejini/trade-setup/dates') {
+      const dates = getSavedSessionDates();
+      sendJson(res, 200, {
+        s: 'ok',
+        today: formatIst(Date.now()).fullDate,
+        dates
+      });
+      return;
+    }
+
+    // 4. API: Live / Historical 5-Minute Heikin Ashi Trade Setup Scanner
     if (pathname === '/api/tradejini/trade-setup') {
-      const setupResult = await getTradejiniTradeSetup();
+      const reqDate = parsedUrl.searchParams.get('date');
+      const setupResult = await getTradejiniTradeSetup(reqDate);
       sendJson(res, 200, setupResult);
       return;
     }
@@ -2671,6 +3306,21 @@ const server = http.createServer(async (req, res) => {
       const minTrend = parsedUrl.searchParams.get('minTrend') || '3';
       const screenerResult = await getTradejiniAaaScreener(days, minTrend);
       sendJson(res, 200, screenerResult);
+      return;
+    }
+
+    // 5b. API: DhanHQ Status & Dynamic Refresh
+    if (pathname === '/api/dhan/status') {
+      sendJson(res, 200, dhan.getDhanStatus());
+      return;
+    }
+    if (pathname === '/api/dhan/refresh' && req.method === 'POST') {
+      try {
+        await dhan.refreshDhanSession(true);
+        sendJson(res, 200, { s: 'ok', message: 'Dhan token refreshed successfully', status: dhan.getDhanStatus() });
+      } catch (err) {
+        sendJson(res, 500, { s: 'error', message: err.message });
+      }
       return;
     }
 
@@ -2740,10 +3390,11 @@ function scheduleDailyTradejiniSupervisor() {
       // Checkpoint 08:45 IST: Morning Pre-market Cache Clear
       if (hhmm === '08:45' && lastExecutedAction !== `FLUSH_${actionKey}`) {
         lastExecutedAction = `FLUSH_${actionKey}`;
-        console.log(`[Tradejini Auto-Login] [08:45 IST] Clearing stale yesterday caches before market open...`);
+        console.log(`[Tradejini Auto-Login] [08:45 IST] Clearing stale yesterday caches and preparing blank slate session...`);
         raw60dCache.clear();
         screenerCache.clear();
         candleCache.clear();
+        ensureTodaySession();
         await refreshTradejiniSession(true);
       }
 
@@ -2775,6 +3426,13 @@ function scheduleDailyTradejiniSupervisor() {
         warmupDailyAaaUniverse(true).catch(() => {});
       }
 
+      // Checkpoint 16:00 IST: Daily 4:00 PM AAA Screener Update (For Tomorrow's Market)
+      if (hhmm === '16:00' && lastExecutedAction !== `AAA_4PM_${actionKey}`) {
+        lastExecutedAction = `AAA_4PM_${actionKey}`;
+        console.log(`[AAA Screener Supervisor] [16:00 IST / 4:00 PM] Market Closed: Finalizing today's closed Daily (1D) candles & generating fresh signals for tomorrow...`);
+        warmupDailyAaaUniverse(true).then(() => getTradejiniAaaScreener(1, 2)).catch(() => {});
+      }
+
       // 2. Token Expiry Guard (Runs continuously)
       // If token is missing OR expires within 15 minutes, auto-renew with TOTP
       const now = Date.now();
@@ -2782,6 +3440,11 @@ function scheduleDailyTradejiniSupervisor() {
         console.log(`[Tradejini Auto-Login] Token approaching expiry (or null). Renewing automatically via TOTP seed...`);
         await refreshTradejiniSession(true);
       }
+
+      // 2b. Dhan Token Guard (Auto-renew 24h token via TOTP)
+      dhan.refreshDhanSession(false).catch((err) => {
+        console.warn('[Dhan Auto-Login Supervisor Warning]:', err.message);
+      });
 
       // 3. Intraday Periodic Quotes Sweep during Market Hours (every 3 minutes)
       if (isIndianMarketHours() && (Number(ist.mm) % 3 === 0) && ist.ss === '15') {
@@ -2793,6 +3456,110 @@ function scheduleDailyTradejiniSupervisor() {
   }, 15000); // Check every 15 seconds
 }
 
+// -----------------------------------------------------------------------------
+// Native Browser WebSocket Hub (DhanHQ v2 Real-Time Tick Stream)
+// -----------------------------------------------------------------------------
+const wss = new WebSocketServer({ noServer: true });
+
+server.on('upgrade', (request, socket, head) => {
+  const parsed = new URL(request.url, `http://${request.headers.host || 'localhost'}`);
+  const pathname = parsed.pathname;
+  if (pathname === '/ws' || pathname === '/aaa/ws' || pathname.endsWith('/ws')) {
+    wss.handleUpgrade(request, socket, head, (ws) => {
+      wss.emit('connection', ws, request);
+    });
+  } else {
+    socket.destroy();
+  }
+});
+
+wss.on('connection', (ws, req) => {
+  browserWsClients.add(ws);
+
+  // Send immediate snapshot of all active live quotes
+  const snapshot = {};
+  for (const [sym, q] of liveQuotesMap.entries()) {
+    snapshot[sym] = q;
+  }
+  try {
+    ws.send(JSON.stringify({
+      type: 'snapshot',
+      dhanConnected: dhan.dhanStream.connected,
+      marketStatus: getCurrentMarketStatus(),
+      quotes: snapshot,
+      timestamp: Date.now()
+    }));
+  } catch (e) {}
+
+  ws.on('message', async (message) => {
+    try {
+      const data = JSON.parse(message.toString());
+      if (data.type === 'subscribe') {
+        const syms = Array.isArray(data.symbols) ? data.symbols : (data.symbol ? [data.symbol] : []);
+        for (const s of syms) {
+          if (!s) continue;
+          const cleanSym = String(s).toUpperCase().trim();
+
+          // 1. Subscribe dynamically on DhanHQ WebSocket
+          dhan.dhanStream.subscribe(cleanSym);
+
+          // 2. Subscribe dynamically on Tradejini WebSocket
+          const token = resolveStreamTokenFromSymbol(cleanSym);
+          if (token && tjStreamClient && tjStreamConnected) {
+            if (!tjStreamActiveTokens.has(token)) {
+              tjStreamActiveTokens.add(token);
+              tjStreamClient.subscribeL1(Array.from(tjStreamActiveTokens));
+              tjStreamClient.subscribeL1Snapshot(Array.from(tjStreamActiveTokens));
+            }
+          }
+
+          // 3. Immediately send live quote back to the client if cached in memory
+          const q = liveQuotesMap.get(cleanSym) || dhan.dhanStream.latestQuotes.get(cleanSym);
+          if (q && q.price > 0) {
+            try { ws.send(JSON.stringify({ type: 'tick', tick: q })); } catch (e) {}
+          } else {
+            // Asynchronously fetch current candle to provide immediate LTP & quote
+            dhan.getDhanCandles(cleanSym, '5', 1).then((cData) => {
+              if (cData && Array.isArray(cData.candles) && cData.candles.length > 0) {
+                const last = cData.candles[cData.candles.length - 1];
+                const prev = cData.candles.length > 1 ? cData.candles[cData.candles.length - 2].close : last.open;
+                const chg = Number((last.close - prev).toFixed(2));
+                const chgPct = prev > 0 ? Number(((chg / prev) * 100).toFixed(2)) : 0;
+                const quote = {
+                  symbol: cleanSym,
+                  canonicalSymbol: cleanSym,
+                  price: last.close,
+                  open: last.open,
+                  high: last.high,
+                  low: last.low,
+                  prevClose: prev,
+                  change: chg,
+                  changePercent: chgPct,
+                  time: Math.floor(Date.now() / 1000),
+                  timestamp: Date.now(),
+                  source: 'DhanHQ Immediate Live Quote'
+                };
+                liveQuotesMap.set(cleanSym, quote);
+                if (ws.readyState === 1 /* OPEN */) {
+                  ws.send(JSON.stringify({ type: 'tick', tick: quote }));
+                }
+              }
+            }).catch(() => {});
+          }
+        }
+      }
+    } catch (e) {}
+  });
+
+  ws.on('close', () => {
+    browserWsClients.delete(ws);
+  });
+
+  ws.on('error', () => {
+    browserWsClients.delete(ws);
+  });
+});
+
 server.listen(PORT, HOST, () => {
   console.log(`==================================================================`);
   console.log(` Finanthropist Educare Pvt Ltd - Tradejini Pure Live Data Terminal`);
@@ -2800,8 +3567,21 @@ server.listen(PORT, HOST, () => {
   console.log(` Auto-Login Token: Active (Auto-renew via TOTP Seed: ${TJ_USER_ID})`);
   console.log(` Daily (1D) AAA Morning Scanner: Enabled (189 Instruments)`);
   console.log(` Daily Scheduled Supervisor: Active (08:00, 08:45, 09:08, 09:16, 09:21, 15:35)`);
-  console.log(` Tradejini WebSocket Stream: Initializing (api.tradejini.com)...`);
+  console.log(` DhanHQ Real-Time WebSocket Feed: Connecting (wss://api-feed.dhan.co)...`);
+  console.log(` Native Browser WebSocket Hub: Active (ws://${HOST}:${PORT}/ws)`);
   console.log(`==================================================================`);
+
+  // 1. Connect DhanHQ WebSocket Stream & Pre-subscribe full universe (indices + stocks)
+  dhan.dhanStream.connect();
+  const preSubUniverse = Array.from(new Set([
+    'NIFTY 50', 'BANK NIFTY', 'FIN NIFTY', 'MIDCAP NIFTY', 'SENSEX',
+    'GOLD', 'CRUDEOIL', 'ACC', 'ABB',
+    ...CORE_STOCKS,
+    ...AAA_EXTRA_STOCKS
+  ]));
+  dhan.dhanStream.subscribeMany(preSubUniverse);
+
+  ensureTodaySession();
   scheduleDailyTradejiniSupervisor();
   refreshTradejiniSession(false)
     .then(() => {
@@ -2809,6 +3589,12 @@ server.listen(PORT, HOST, () => {
       loadTradejiniSecuritiesCatalog();
       return getLiveQuotesSnapshot();
     })
-    .then(() => warmupDailyAaaUniverse(false))
+    .then(() => {
+      console.log('[Startup] Core live quotes snapshot initialized successfully.');
+      setTimeout(() => {
+        console.log('[Startup] Warming up Triple A Daily (1D) Universe in background...');
+        warmupDailyAaaUniverse(false).catch(() => {});
+      }, 2500);
+    })
     .catch((err) => console.error('[Startup Error]', err));
 });
