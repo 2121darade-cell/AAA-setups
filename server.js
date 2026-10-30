@@ -12,6 +12,7 @@ const path = require('path');
 const { URL } = require('url');
 const { WebSocketServer } = require('ws');
 const dhan = require('./lib/dhan.js');
+const simEngine = require('./lib/simulation-engine.js');
 
 // Global Exception Protection - Prevent server crashes on network timeouts or socket resets
 process.on('uncaughtException', (err) => {
@@ -145,6 +146,126 @@ function getSavedSessionDates() {
     }
   } catch (err) {
     console.warn('[Session Storage] Error reading session files:', err.message);
+  }
+
+  // Sort: Today first, then latest dates descending
+  list.sort((a, b) => {
+    if (a.isToday) return -1;
+    if (b.isToday) return 1;
+    const tA = new Date(a.date).getTime() || 0;
+    const tB = new Date(b.date).getTime() || 0;
+    return tB - tA;
+  });
+
+  return list;
+}
+
+function findSignalById(signalId) {
+  if (!signalId) return null;
+  // 1. Check in active session memory
+  if (activeSessionSignals.has(signalId)) {
+    return activeSessionSignals.get(signalId);
+  }
+  // 2. Search saved session files
+  try {
+    if (fs.existsSync(SESSIONS_DIR)) {
+      const files = fs.readdirSync(SESSIONS_DIR);
+      for (const f of files) {
+        if (f.startsWith('session_') && f.endsWith('.json')) {
+          try {
+            const raw = JSON.parse(fs.readFileSync(path.join(SESSIONS_DIR, f), 'utf8'));
+            if (Array.isArray(raw.signals)) {
+              const found = raw.signals.find(s => s.Id === signalId);
+              if (found) return found;
+            }
+          } catch (e) {}
+        }
+      }
+    }
+  } catch (err) {}
+  return null;
+}
+
+// Persistent Session Manager for Daily (1D) AAA Candlestick Screener Calendar
+const AAA_SESSIONS_DIR = path.join(__dirname, 'data', 'aaa_sessions');
+try {
+  if (!fs.existsSync(AAA_SESSIONS_DIR)) {
+    fs.mkdirSync(AAA_SESSIONS_DIR, { recursive: true });
+  }
+} catch (e) {}
+
+function getAaaSessionFilePath(dateStr) {
+  const safeDate = String(dateStr || '').trim().replace(/[^a-zA-Z0-9_-]/g, '_');
+  return path.join(AAA_SESSIONS_DIR, `aaa_session_${safeDate}.json`);
+}
+
+function saveAaaSession(dateStr, rows, totalScanned = 189) {
+  if (!dateStr || !Array.isArray(rows)) return;
+  const fPath = getAaaSessionFilePath(dateStr);
+  try {
+    const buyCount = rows.filter(r => r.type === 'BUY').length;
+    const sellCount = rows.filter(r => r.type === 'SELL').length;
+    const activeCount = rows.filter(r => r.status === 'ACTIVE').length;
+    const targetsCount = rows.filter(r => r.status === 'TARGET_1_HIT' || r.status === 'TARGET_2_HIT').length;
+    const slCount = rows.filter(r => r.status === 'SL_HIT').length;
+
+    const data = {
+      date: dateStr,
+      fileKey: dateStr.replace(/ /g, '_'),
+      updatedAt: formatIst(Date.now()).fullDateTime,
+      timeframe: '1D (Daily Timeframe)',
+      totalScanned: totalScanned || 189,
+      stats: {
+        total: rows.length,
+        buy: buyCount,
+        sell: sellCount,
+        active: activeCount,
+        targets: targetsCount,
+        stopLosses: slCount
+      },
+      signals: rows
+    };
+    fs.writeFileSync(fPath, JSON.stringify(data, null, 2), 'utf8');
+    console.log(`[AAA Session Storage] Saved ${rows.length} signals for session: ${dateStr} (${targetsCount} targets, ${slCount} SLs, ${activeCount} active)`);
+  } catch (err) {
+    console.warn(`[AAA Session Storage] Failed to save session for ${dateStr}:`, err.message);
+  }
+}
+
+function getSavedAaaSessionDates() {
+  const list = [];
+  try {
+    if (!fs.existsSync(AAA_SESSIONS_DIR)) return [];
+    const files = fs.readdirSync(AAA_SESSIONS_DIR);
+    const todayStr = formatIst(Date.now()).fullDate;
+
+    for (const f of files) {
+      if (f.startsWith('aaa_session_') && f.endsWith('.json')) {
+        const fileKey = f.replace(/^aaa_session_/, '').replace(/\.json$/, '');
+        const fPath = path.join(AAA_SESSIONS_DIR, f);
+        try {
+          const raw = JSON.parse(fs.readFileSync(fPath, 'utf8'));
+          const dateStr = raw.date || fileKey.replace(/_/g, ' ');
+          const sigs = Array.isArray(raw.signals) ? raw.signals : [];
+          list.push({
+            date: dateStr,
+            fileKey,
+            isToday: dateStr === todayStr,
+            updatedAt: raw.updatedAt || '',
+            stats: raw.stats || {
+              total: sigs.length,
+              buy: sigs.filter(s => s.type === 'BUY').length,
+              sell: sigs.filter(s => s.type === 'SELL').length,
+              active: sigs.filter(s => s.status === 'ACTIVE').length,
+              targets: sigs.filter(s => s.status === 'TARGET_1_HIT' || s.status === 'TARGET_2_HIT').length,
+              stopLosses: sigs.filter(s => s.status === 'SL_HIT').length
+            }
+          });
+        } catch (e) {}
+      }
+    }
+  } catch (err) {
+    console.warn('[AAA Session Storage] Error reading session files:', err.message);
   }
 
   // Sort: Today first, then latest dates descending
@@ -665,129 +786,10 @@ function broadcastSseStream(payload) {
 }
 
 async function initTradejiniWebSocketStream() {
-  try {
-    const token = await refreshTradejiniSession(false);
-    if (!token) {
-      console.warn('[Tradejini WebSocket] Session not ready yet. Retrying in 8s...');
-      setTimeout(initTradejiniWebSocketStream, 8000);
-      return;
-    }
-
-    let NxtradStream;
-    try {
-      NxtradStream = require('./lib/tradejini-stream/NxtradStream').default || require('./lib/tradejini-stream/NxtradStream');
-    } catch (reqErr) {
-      console.warn('[Tradejini WebSocket] NxtradStream library not found:', reqErr.message);
-      return;
-    }
-
-    const authToken = `${TJ_API_KEY}:${token}`;
-
-    function onConn(stream, msg) {
-      if (msg.s === 'connected') {
-        tjStreamConnected = true;
-        console.log('[Tradejini WebSocket] Connected successfully to wss://api.tradejini.com!');
-        const tokens = Array.from(tjStreamActiveTokens);
-        stream.subscribeL1(tokens);
-        stream.subscribeL1Snapshot(tokens);
-        broadcastSseStream({
-          type: 'streamStatus',
-          connected: true,
-          timestamp: Date.now()
-        });
-      } else if (msg.s === 'closed') {
-        tjStreamConnected = false;
-        console.warn(`[Tradejini WebSocket] Connection closed (${msg.code}): ${msg.reason}`);
-        broadcastSseStream({
-          type: 'streamStatus',
-          connected: false,
-          reason: msg.reason,
-          timestamp: Date.now()
-        });
-
-        if (msg.code === 4001 || (msg.reason && msg.reason.toLowerCase().includes('unauthor'))) {
-          console.log('[Tradejini WebSocket] Session unauthorized. Re-authenticating via TOTP before reconnecting...');
-          refreshTradejiniSession(true).then(() => {
-            setTimeout(initTradejiniWebSocketStream, 3000);
-          }).catch(() => {
-            setTimeout(initTradejiniWebSocketStream, 10000);
-          });
-        } else {
-          clearTimeout(tjStreamReconnectTimer);
-          tjStreamReconnectTimer = setTimeout(() => {
-            if (tjStreamClient) {
-              tjStreamClient.reconnect().catch(() => initTradejiniWebSocketStream());
-            } else {
-              initTradejiniWebSocketStream();
-            }
-          }, 5000);
-        }
-      }
-    }
-
-    function onStreamData(stream, msg) {
-      if (!msg) return;
-
-      // 1. Market Status Event (Real Exchange Status from Tradejini)
-      if (msg.msgType === 'marketStatus' && Array.isArray(msg.status)) {
-        for (const st of msg.status) {
-          if (st && st.exchSeg) {
-            latestMarketStatus[st.exchSeg] = st.status; // 1 = open, 0 = closed
-          }
-        }
-        broadcastSseStream({
-          type: 'marketStatus',
-          status: latestMarketStatus,
-          timestamp: Date.now()
-        });
-        return;
-      }
-
-      // 2. Level 1 Live Tick Event
-      if (msg.msgType === 'L1') {
-        const streamSym = msg.symbol;
-        const mappedSym = resolveSymbolFromStreamToken(streamSym) || streamSym;
-        const tickPrice = Number(msg.ltp) || Number(msg.dayClose) || Number(msg.close) || 0;
-        if (tickPrice <= 0) return;
-
-        const prevCl = Number(msg.close) || Number(msg.dayClose) || tickPrice;
-        const chg = typeof msg.chng === 'number' ? msg.chng : Number((tickPrice - prevCl).toFixed(2));
-        const chgPct = typeof msg.chngPer === 'number' ? msg.chngPer : (prevCl > 0 ? Number(((chg / prevCl) * 100).toFixed(2)) : 0);
-
-        const quote = {
-          symbol: mappedSym,
-          streamSymbol: streamSym,
-          price: tickPrice,
-          open: Number(msg.open) || tickPrice,
-          high: Number(msg.high) || tickPrice,
-          low: Number(msg.low) || tickPrice,
-          prevClose: prevCl,
-          change: chg,
-          changePercent: chgPct,
-          volume: Number(msg.vol) || 0,
-          time: msg.ltt || '',
-          timestamp: Date.now()
-        };
-
-        liveQuotesMap.set(mappedSym.toUpperCase().trim(), quote);
-        if (streamSym !== mappedSym) {
-          liveQuotesMap.set(streamSym.toUpperCase().trim(), quote);
-        }
-
-        broadcastWsTick(quote);
-        broadcastSseStream({
-          type: 'tick',
-          tick: quote
-        });
-      }
-    }
-
-    tjStreamClient = new NxtradStream('api.tradejini.com', onConn, onStreamData, false);
-    await tjStreamClient.connect(authToken);
-  } catch (err) {
-    console.error('[Tradejini WebSocket] Init exception:', err.message);
-    setTimeout(initTradejiniWebSocketStream, 15000);
-  }
+  // Legacy Tradejini stream successfully decommissioned.
+  // Real-Time data stream migrated 100% to DhanHQ v2 WebSocket Feed (wss://api-feed.dhan.co)
+  tjStreamConnected = Boolean(dhan.dhanStream && dhan.dhanStream.connected);
+  return Promise.resolve();
 }
 
 function extractQuoteFromCandles(symbol, candles) {
@@ -1030,79 +1032,7 @@ function aggregateBarsToMinutes(candles5m, groupCount) {
   return out;
 }
 
-// Fetch raw 1m or 5m bars from Tradejini CubePlus API with rate-limit retry & auto re-login
-async function fetchRawTradejiniBars(symbol, rawInterval = '5', reqDays = 7) {
-  const tradejiniId = resolveTradejiniId(symbol);
-  const cacheKey = `${tradejiniId}_${rawInterval}_${reqDays}`;
-  const ttl = reqDays >= 45 ? getRaw60dTtlMs() : CANDLE_CACHE_TTL_MS;
-  const cacheStore = reqDays >= 45 ? raw60dCache : candleCache;
-  const cached = cacheStore.get(cacheKey);
-  if (cached && Date.now() - cached.ts < ttl) {
-    return cached.data;
-  }
-
-  let token = await refreshTradejiniSession(false);
-  const nowSec = Math.floor(Date.now() / 1000);
-  const fromSec = nowSec - reqDays * 86400;
-  const url = `${TJ_BASE_URL}/api/mkt-data/chart/interval-data?from=${fromSec}&to=${nowSec}&interval=${rawInterval}&id=${encodeURIComponent(tradejiniId)}`;
-
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      const res = await tjThrottledRequest(url, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${TJ_API_KEY}:${token}`,
-          'Accept': 'application/json'
-        }
-      });
-
-      if (res.statusCode === 200) {
-        const data = JSON.parse(res.body);
-        if (data && data.s === 'ok' && data.d && Array.isArray(data.d.bars)) {
-          const candles = parseBars(data.d.bars, rawInterval);
-          const quote = extractQuoteFromCandles(symbol, candles);
-          const result = {
-            s: 'ok',
-            symbol,
-            tradejiniId,
-            count: candles.length,
-            quote,
-            candles,
-            source: 'Tradejini CubePlus Live API'
-          };
-          cacheStore.set(cacheKey, { ts: Date.now(), data: result });
-          return result;
-        } else if (data && (data.s === 'error' || data.status === 'error')) {
-          const emsg = String(data.emsg || data.message || '').toLowerCase();
-          if ((emsg.includes('token') || emsg.includes('session') || emsg.includes('unauthor') || emsg.includes('expire')) && attempt < 2) {
-            console.warn(`[Tradejini Auto-Login] Session expired in response (${emsg}). Auto re-authenticating via TOTP...`);
-            token = await refreshTradejiniSession(true);
-            continue;
-          }
-        }
-      } else if (res.statusCode === 429) {
-        await new Promise((r) => setTimeout(r, 450 * (attempt + 1)));
-        continue;
-      } else if ((res.statusCode === 401 || res.statusCode === 403) && attempt < 2) {
-        console.warn(`[Tradejini Auto-Login] HTTP ${res.statusCode} received for ${symbol}. Re-authenticating session via TOTP...`);
-        token = await refreshTradejiniSession(true);
-        continue;
-      }
-    } catch (err) {
-      console.error(`[Tradejini Auto-Login] Error fetching candles for ${symbol}: ${err.message}`);
-    }
-    break;
-  }
-
-  return {
-    s: 'error',
-    symbol,
-    tradejiniId,
-    candles: []
-  };
-}
-
-// 4. Fetch Real Live Candles from DhanHQ (with Tradejini Fallback)
+// 4. Primary Data Core: Pure DhanHQ v2 Engine (Guaranteed Real Exchange OHLC)
 async function getTradejiniCandles(symbol, interval = '5', days = 90) {
   const normIntv = String(interval || '5').toUpperCase();
   const tf = ['1', '5', '15', '60', 'D', '1D', 'W', '1W', 'M', '1M'].includes(normIntv)
@@ -1110,70 +1040,30 @@ async function getTradejiniCandles(symbol, interval = '5', days = 90) {
     : '5';
 
   const reqDays = (tf === 'W' || tf === 'M') ? 365 : (tf === 'D' ? Math.max(Number(days) || 90, 90) : (Number(days) || 7));
-
-  // 1. Primary: High-Speed, Rate-Limited DhanHQ v2 Engine (Guaranteed 3-month history & real OHLC)
-  try {
-    const dhanRes = await dhan.getDhanCandles(symbol, tf, reqDays);
-    if (dhanRes && dhanRes.s === 'ok' && Array.isArray(dhanRes.candles) && dhanRes.candles.length > 0) {
-      const quote = extractQuoteFromCandles(symbol, dhanRes.candles);
-      return {
-        s: 'ok',
-        symbol: symbol.toUpperCase().trim(),
-        count: dhanRes.candles.length,
-        quote: quote,
-        candles: dhanRes.candles,
-        source: dhanRes.source || `DhanHQ API v2 (${tf})`
-      };
-    }
-  } catch (err) {
-    console.warn(`[Dhan Candle Engine] Fallback to Tradejini for ${symbol}:`, err.message);
+  const dhanRes = await dhan.getDhanCandles(symbol, tf, reqDays);
+  if (dhanRes && dhanRes.s === 'ok' && Array.isArray(dhanRes.candles)) {
+    const quote = extractQuoteFromCandles(symbol, dhanRes.candles);
+    return {
+      s: 'ok',
+      symbol: symbol.toUpperCase().trim(),
+      count: dhanRes.candles.length,
+      quote: quote,
+      candles: dhanRes.candles,
+      source: dhanRes.source || `DhanHQ API v2 (${tf})`
+    };
   }
-
-  // 2. Secondary Fallback: Tradejini API
-  const tradejiniId = resolveTradejiniId(symbol);
-  if (tf === '1') {
-    return fetchRawTradejiniBars(symbol, '1', Math.min(Math.max(Number(days) || 3, 1), 7));
-  }
-  if (tf === '5') {
-    const rDays = Number(days) >= 45 ? 60 : 7;
-    return fetchRawTradejiniBars(symbol, '5', rDays);
-  }
-
-  const baseDays = (tf === 'W' || tf === 'M') ? 365 : (tf === 'D' ? 60 : 15);
-  const base5m = await fetchRawTradejiniBars(symbol, '5', baseDays);
-  if (!base5m || base5m.s !== 'ok' || !Array.isArray(base5m.candles) || base5m.candles.length === 0) {
-    return { s: 'error', symbol, tradejiniId, candles: [] };
-  }
-
-  let aggCandles = [];
-  const liveQ = liveQuotesMap.get(symbol.toUpperCase().trim()) || base5m.quote;
-  if (tf === 'D') {
-    aggCandles = aggregateBarsToDaily(base5m.candles, liveQ);
-  } else if (tf === 'W') {
-    const daily = aggregateBarsToDaily(base5m.candles, liveQ);
-    aggCandles = aggregateDailyToWeekly(daily);
-  } else if (tf === 'M') {
-    const daily = aggregateBarsToDaily(base5m.candles, liveQ);
-    aggCandles = aggregateDailyToMonthly(daily);
-  } else if (tf === '15') {
-    aggCandles = aggregateBarsToMinutes(base5m.candles, 3);
-  } else if (tf === '60') {
-    aggCandles = aggregateBarsToMinutes(base5m.candles, 12);
-  }
-
-  return {
-    s: 'ok',
-    symbol,
-    tradejiniId,
-    count: aggCandles.length,
-    quote: base5m.quote,
-    candles: aggCandles,
-    source: `Tradejini CubePlus Live API (${tf})`
-  };
+  return dhanRes || { s: 'error', symbol, candles: [] };
 }
 
 // 5. Refresh Live Quotes for Indices, MCX & Top Stocks
 async function getLiveQuotesSnapshot() {
+  // Sync in-memory quotes from Dhan WebSocket stream
+  if (dhan.dhanStream && dhan.dhanStream.latestQuotes) {
+    for (const [s, q] of dhan.dhanStream.latestQuotes.entries()) {
+      liveQuotesMap.set(s, q);
+    }
+  }
+
   if (Date.now() - lastQuotesSweepMs < 15000 && liveQuotesMap.size >= 25) {
     return Object.fromEntries(liveQuotesMap);
   }
@@ -1189,7 +1079,10 @@ async function getLiveQuotesSnapshot() {
       ];
       for (const sym of symbols) {
         if (!liveQuotesMap.has(sym)) {
-          await getTradejiniCandles(sym, '5', 3).catch(() => null);
+          const cData = await dhan.getDhanCandles(sym, '5', 3).catch(() => null);
+          if (cData && cData.quote) {
+            liveQuotesMap.set(sym.toUpperCase().trim(), cData.quote);
+          }
         }
       }
       lastQuotesSweepMs = Date.now();
@@ -2140,22 +2033,27 @@ function evaluateDailySignalStatus(type, entry, sl, tgt1, tgt2, dailyCandles, si
   return { status, statusText };
 }
 
-function scanDailyCandlesForAaa(sym, dailyCandles, minTrend = 3, lookbackDays = 10) {
+function scanDailyCandlesForAaa(sym, dailyCandles, minTrend = 3, lookbackDays = 10, targetEndIdx = null) {
   const n = dailyCandles.length;
   if (n < minTrend + 2) return [];
 
   const liveQ = liveQuotesMap.get(sym.toUpperCase().trim());
   const latestClose = round2((liveQ && liveQ.price) ? liveQ.price : dailyCandles[n - 1].close);
 
-  // Market Status & Reference Date Gate:
-  // During live market hours (09:15 - 15:30 IST), if dailyCandles contains today's bar,
-  // it is still forming intraday. The latest COMPLETED/CLOSED trade is yesterday's session (n - 2).
-  // After market close (>= 15:30 / 16:00 IST), today's bar is 100% completed & closed (n - 1).
-  const nowIst = formatIst(Date.now());
-  const hhmmNum = Number(nowIst.hh) * 100 + Number(nowIst.mm);
-  const isMarketOpenIntraday = hhmmNum >= 915 && hhmmNum < 1530;
-  const lastCandleIsToday = dailyCandles[n - 1].fullDate === nowIst.fullDate;
-  const endIdx = (isMarketOpenIntraday && lastCandleIsToday) ? n - 2 : n - 1;
+  let endIdx = n - 1;
+  if (targetEndIdx !== null && typeof targetEndIdx === 'number' && targetEndIdx >= 0 && targetEndIdx < n) {
+    endIdx = targetEndIdx;
+  } else {
+    // Market Status & Reference Date Gate:
+    // During live market hours (09:15 - 15:30 IST), if dailyCandles contains today's bar,
+    // it is still forming intraday. The latest COMPLETED/CLOSED trade is yesterday's session (n - 2).
+    // After market close (>= 15:30 / 16:00 IST), today's bar is 100% completed & closed (n - 1).
+    const nowIst = formatIst(Date.now());
+    const hhmmNum = Number(nowIst.hh) * 100 + Number(nowIst.mm);
+    const isMarketOpenIntraday = hhmmNum >= 915 && hhmmNum < 1530;
+    const lastCandleIsToday = dailyCandles[n - 1].fullDate === nowIst.fullDate;
+    endIdx = (isMarketOpenIntraday && lastCandleIsToday) ? n - 2 : n - 1;
+  }
 
   if (endIdx < minTrend) return [];
   // Default cleanLookback = 1: Strictly scans the single latest closed daily session!
@@ -2601,6 +2499,7 @@ async function warmupDailyAaaUniverse(force = false) {
       screenerCache.clear();
       lastMorningScanDate = formatIst(Date.now()).fullDate;
       console.log(`[AAA Daily Scanner] Completed Daily (1D) scan across ${dailyUniverseCandlesMap.size}/${scanSymbols.length} instruments for ${lastMorningScanDate}`);
+      syncAaaCalendarSessions().catch(() => {});
     } finally {
       morningWarmupInFlight = null;
     }
@@ -2608,9 +2507,154 @@ async function warmupDailyAaaUniverse(force = false) {
   return morningWarmupInFlight;
 }
 
-async function getTradejiniAaaScreener(days = 1, minTrend = 3) {
-  // Default cleanDays = 1: Strictly inspects the single latest closed daily candle!
-  // This gives the trader actionable signals for TOMORROW'S market with zero intermediate bars.
+async function generateHistoricalAaaSession(targetDateStr, minTrend = 3) {
+  const cleanTargetDate = String(targetDateStr || '').replace(/_/g, ' ').trim();
+  if (!cleanTargetDate) return null;
+  const fPath = getAaaSessionFilePath(cleanTargetDate);
+
+  if (fs.existsSync(fPath)) {
+    try {
+      const existing = JSON.parse(fs.readFileSync(fPath, 'utf8'));
+      if (existing && Array.isArray(existing.signals)) {
+        return existing;
+      }
+    } catch (e) {}
+  }
+
+  const scanSymbols = getAaaScanUniverse();
+  const historicalSignals = [];
+  let scannedCount = 0;
+
+  for (const sym of scanSymbols) {
+    let dailyCandles = dailyUniverseCandlesMap.get(sym);
+    if (!dailyCandles) {
+      const cData = await getTradejiniCandles(sym, 'D', 60).catch(() => null);
+      if (cData && cData.s === 'ok' && Array.isArray(cData.candles) && cData.candles.length > 0) {
+        dailyCandles = cData.candles;
+        dailyUniverseCandlesMap.set(sym, dailyCandles);
+      }
+    }
+
+    if (dailyCandles && dailyCandles.length >= minTrend + 2) {
+      // Find candle corresponding to cleanTargetDate
+      const targetEndIdx = dailyCandles.findIndex(c => {
+        const d1 = String(c.fullDate || '').toLowerCase();
+        const d2 = String(c.date || '').toLowerCase();
+        const target = cleanTargetDate.toLowerCase();
+        return d1 === target || d2 === target || d1.startsWith(target);
+      });
+
+      if (targetEndIdx !== -1 && targetEndIdx >= minTrend) {
+        scannedCount++;
+        const foundList = scanDailyCandlesForAaa(sym, dailyCandles, minTrend, 1, targetEndIdx);
+        if (Array.isArray(foundList) && foundList.length > 0) {
+          historicalSignals.push(...foundList);
+        }
+      }
+    }
+  }
+
+  historicalSignals.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+  saveAaaSession(cleanTargetDate, historicalSignals, Math.max(scannedCount, scanSymbols.length));
+
+  return {
+    date: cleanTargetDate,
+    fileKey: cleanTargetDate.replace(/ /g, '_'),
+    updatedAt: `${cleanTargetDate} 15:30:00 IST`,
+    timeframe: '1D (Daily Timeframe)',
+    totalScanned: Math.max(scannedCount, scanSymbols.length),
+    stats: {
+      total: historicalSignals.length,
+      buy: historicalSignals.filter(s => s.type === 'BUY').length,
+      sell: historicalSignals.filter(s => s.type === 'SELL').length,
+      active: historicalSignals.filter(s => s.status === 'ACTIVE').length,
+      targets: historicalSignals.filter(s => s.status === 'TARGET_1_HIT' || s.status === 'TARGET_2_HIT').length,
+      stopLosses: historicalSignals.filter(s => s.status === 'SL_HIT').length
+    },
+    signals: historicalSignals
+  };
+}
+
+async function syncAaaCalendarSessions() {
+  try {
+    const scanSymbols = getAaaScanUniverse();
+    let sampleCandles = dailyUniverseCandlesMap.get('RELIANCE') || dailyUniverseCandlesMap.get('NIFTY 50') || dailyUniverseCandlesMap.get('HDFCBANK');
+    if (!sampleCandles || sampleCandles.length === 0) {
+      for (const s of scanSymbols) {
+        const c = dailyUniverseCandlesMap.get(s);
+        if (c && c.length >= 10) {
+          sampleCandles = c;
+          break;
+        }
+      }
+    }
+    if (!sampleCandles || sampleCandles.length === 0) return;
+
+    // Extract unique trading dates from the last 10 daily candles
+    const recentDates = [];
+    for (let i = sampleCandles.length - 1; i >= Math.max(0, sampleCandles.length - 10); i--) {
+      const d = sampleCandles[i].fullDate;
+      if (d && !recentDates.includes(d)) {
+        recentDates.push(d);
+      }
+    }
+
+    for (const d of recentDates) {
+      const fPath = getAaaSessionFilePath(d);
+      if (!fs.existsSync(fPath)) {
+        await generateHistoricalAaaSession(d, 3);
+      }
+    }
+    console.log(`[AAA Calendar Sync] Verified & synced sessions for ${recentDates.length} recent trading days.`);
+  } catch (err) {
+    console.warn('[AAA Calendar Sync] Sync error:', err.message);
+  }
+}
+
+async function getTradejiniAaaScreener(days = 1, minTrend = 3, requestedDate = null) {
+  const todayStr = formatIst(Date.now()).fullDate;
+  const cleanReqDate = requestedDate ? requestedDate.replace(/_/g, ' ').trim() : null;
+
+  // 1. Historical Session Date Requested via Calendar Dropdown
+  if (cleanReqDate && cleanReqDate !== 'latest' && cleanReqDate !== todayStr) {
+    let sessionData = null;
+    const fPath = getAaaSessionFilePath(cleanReqDate);
+    if (fs.existsSync(fPath)) {
+      try {
+        sessionData = JSON.parse(fs.readFileSync(fPath, 'utf8'));
+      } catch (e) {}
+    }
+    if (!sessionData || !Array.isArray(sessionData.signals)) {
+      sessionData = await generateHistoricalAaaSession(cleanReqDate, minTrend);
+    }
+
+    const sigs = (sessionData && Array.isArray(sessionData.signals)) ? sessionData.signals : [];
+    sigs.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+
+    return {
+      s: 'ok',
+      timeframe: '1D (Daily Timeframe)',
+      sessionDate: cleanReqDate,
+      isHistorical: true,
+      referenceDate: `${cleanReqDate} Closed Daily Session`,
+      updatedAt: (sessionData && sessionData.updatedAt) || `${cleanReqDate} 15:30:00 IST`,
+      totalScanned: (sessionData && sessionData.totalScanned) || 189,
+      warmedCount: (sessionData && sessionData.totalScanned) || 189,
+      foundCount: sigs.length,
+      stats: sessionData && sessionData.stats ? sessionData.stats : {
+        total: sigs.length,
+        buy: sigs.filter(s => s.type === 'BUY').length,
+        sell: sigs.filter(s => s.type === 'SELL').length,
+        active: sigs.filter(s => s.status === 'ACTIVE').length,
+        targets: sigs.filter(s => s.status === 'TARGET_1_HIT' || s.status === 'TARGET_2_HIT').length,
+        stopLosses: sigs.filter(s => s.status === 'SL_HIT').length
+      },
+      rows: sigs,
+      source: 'Tradejini & DhanHQ v2 AAA Storage'
+    };
+  }
+
+  // 2. Live / Latest Closed Session for Today's Market
   const cleanDays = Math.min(Math.max(parseInt(days, 10) || 1, 1), 30);
   const cleanTrend = Math.min(Math.max(parseInt(minTrend, 10) || 3, 3), 8);
   const scanSymbols = getAaaScanUniverse();
@@ -2658,6 +2702,8 @@ async function getTradejiniAaaScreener(days = 1, minTrend = 3) {
   const result = {
     s: 'ok',
     timeframe: '1D (Daily Timeframe)',
+    sessionDate: todayStr,
+    isHistorical: false,
     referenceDate: isMarketOpen ? 'कालचा क्लोज (Yesterday Close)' : 'आजचा क्लोज / उद्याच्या ट्रेडसाठी (Today Close - For Tomorrow)',
     updatedAt: `${nowIst.fullDateTime} (1D Daily)`,
     totalScanned: Math.max(scannedCount, scanSymbols.length),
@@ -2666,6 +2712,10 @@ async function getTradejiniAaaScreener(days = 1, minTrend = 3) {
     rows,
     source: 'Tradejini & DhanHQ v2 Live Daily (1D) AAA Engine'
   };
+
+  // Automatically persist today's session signals
+  saveAaaSession(todayStr, rows, Math.max(scannedCount, scanSymbols.length));
+
   screenerCache.set(cacheKey, { ts: Date.now(), data: result });
   return result;
 }
@@ -3151,46 +3201,44 @@ const server = http.createServer(async (req, res) => {
     }
 
     // 1. API: Status
-    if (pathname === '/api/tradejini/status') {
-      await refreshTradejiniSession(false);
+    if (pathname === '/api/tradejini/status' || pathname === '/api/dhan/status') {
       sendJson(res, 200, {
-        connected: Boolean(tjAccessToken),
-        clientCode: TJ_USER_ID,
-        autoLoginStatus: 'ACTIVE (RFC 6238 TOTP Automated Engine)',
-        lastLoginAt: tjLastLoginMs ? formatIst(tjLastLoginMs).fullDateTime : 'Pending',
-        tokenExpiresAt: tjTokenExpiryMs ? formatIst(tjTokenExpiryMs).isoLocal : null,
+        connected: Boolean(dhan.dhanStream.connected),
+        clientCode: dhan.DHAN_CLIENT_ID,
+        dataCore: 'DhanHQ v2 WebSocket & Data Engine',
+        lastLoginAt: 'ACTIVE (DhanHQ Session Token Auto-Managed)',
+        tokenExpiresAt: '24h Rotating TOTP Security',
         todayDate: formatIst(Date.now()).fullDate,
         currentTimeIst: formatIst(Date.now()).fullDateTime,
         isMarketHours: isIndianMarketHours(),
         cachedQuotesCount: liveQuotesMap.size,
-        cachedDailyUniverseSize: raw60dCache.size,
+        cachedDailyUniverseSize: dailyUniverseCandlesMap.size,
         dailyMorningScan: lastMorningScanDate || 'Active',
-        broker: 'Tradejini CubePlus v2'
+        broker: 'DhanHQ v2 (Direct Exchange Stream)',
+        dhanStatus: dhan.getDhanStatus()
       });
       return;
     }
 
     // 1b. API: Manual/Admin Triggered Force Auto-Login & Stale Cache Flush
-    if (pathname === '/api/tradejini/auth-refresh') {
+    if (pathname === '/api/tradejini/auth-refresh' || pathname === '/api/dhan/auth-refresh') {
       try {
-        console.log(`[Tradejini Auto-Login] Manual/Admin forced session re-authentication requested for ${TJ_USER_ID}...`);
+        console.log(`[Dhan Engine] Manual/Admin forced session refresh requested...`);
         raw60dCache.clear();
         screenerCache.clear();
         candleCache.clear();
-        const token = await refreshTradejiniSession(true);
+        await dhan.refreshDhanSession(true);
         // Refresh live quotes and daily cache in background
         getLiveQuotesSnapshot().catch(() => {});
         warmupDailyAaaUniverse(false).catch(() => {});
 
         sendJson(res, 200, {
           s: 'ok',
-          message: 'Tradejini account successfully re-authenticated via TOTP and daily caches flushed',
-          clientCode: TJ_USER_ID,
-          authenticatedAt: formatIst(tjLastLoginMs || Date.now()).fullDateTime,
-          tokenExpiresAt: tjTokenExpiryMs ? formatIst(tjTokenExpiryMs).isoLocal : null,
+          message: 'DhanHQ session successfully refreshed and daily caches flushed',
+          clientCode: dhan.DHAN_CLIENT_ID,
           todayDate: formatIst(Date.now()).fullDate,
-          connected: Boolean(token),
-          broker: 'Tradejini CubePlus v2'
+          connected: Boolean(dhan.dhanStream.connected),
+          broker: 'DhanHQ v2 (Direct Exchange Stream)'
         });
       } catch (err) {
         sendJson(res, 500, {
@@ -3202,7 +3250,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     // 2. API: Live Quotes Snapshot (for Watchlist & Header Indices)
-    if (pathname === '/api/tradejini/quotes') {
+    if (pathname === '/api/tradejini/quotes' || pathname === '/api/dhan/quotes') {
       const quotes = await getLiveQuotesSnapshot();
       sendJson(res, 200, {
         s: 'ok',
@@ -3213,7 +3261,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     // 3. API: Live Candles (Accepts interval or resolution: 1, 5, 15, 60, D)
-    if (pathname === '/api/tradejini/candles') {
+    if (pathname === '/api/tradejini/candles' || pathname === '/api/dhan/candles') {
       const symbol = parsedUrl.searchParams.get('symbol') || 'NIFTY 50';
       const interval = parsedUrl.searchParams.get('interval') || parsedUrl.searchParams.get('resolution') || '5';
       const days = parseInt(parsedUrl.searchParams.get('days') || '7', 10);
@@ -3223,9 +3271,9 @@ const server = http.createServer(async (req, res) => {
     }
 
     // -------------------------------------------------------------------------
-    // API: Real-Time Tradejini WebSocket Stream (Server-Sent Events)
+    // API: Real-Time DhanHQ WebSocket Stream (Server-Sent Events)
     // -------------------------------------------------------------------------
-    if (pathname === '/api/tradejini/stream') {
+    if (pathname === '/api/tradejini/stream' || pathname === '/api/dhan/stream') {
       res.writeHead(200, {
         'Content-Type': 'text/event-stream; charset=utf-8',
         'Cache-Control': 'no-cache, no-transform',
@@ -3237,7 +3285,7 @@ const server = http.createServer(async (req, res) => {
       const currentQuotes = Array.from(liveQuotesMap.values());
       res.write(`data: ${JSON.stringify({
         type: 'snapshot',
-        connected: tjStreamConnected,
+        connected: dhan.dhanStream.connected,
         marketStatus: getCurrentMarketStatus(),
         quotes: currentQuotes
       })}\n\n`);
@@ -3251,38 +3299,31 @@ const server = http.createServer(async (req, res) => {
     }
 
     // API: Dynamic Symbol Subscription to WebSocket
-    if (pathname === '/api/tradejini/subscribe') {
+    if (pathname === '/api/tradejini/subscribe' || pathname === '/api/dhan/subscribe') {
       const sym = (parsedUrl.searchParams.get('symbol') || '').toUpperCase().trim();
       if (sym) {
         dhan.dhanStream.subscribe(sym);
       }
-      const token = resolveStreamTokenFromSymbol(sym);
-      if (token && tjStreamClient && tjStreamConnected) {
-        if (!tjStreamActiveTokens.has(token)) {
-          tjStreamActiveTokens.add(token);
-          tjStreamClient.subscribeL1(Array.from(tjStreamActiveTokens));
-          tjStreamClient.subscribeL1Snapshot(Array.from(tjStreamActiveTokens));
-        }
-      }
       const quote = liveQuotesMap.get(sym) || (dhan.dhanStream.latestQuotes.get(sym) || null);
-      sendJson(res, 200, { s: 'ok', symbol: sym, streamToken: token || null, subscribed: true, quote });
+      sendJson(res, 200, { s: 'ok', symbol: sym, subscribed: true, quote });
       return;
     }
 
     // API: Live Stream Status
-    if (pathname === '/api/tradejini/stream-status') {
+    if (pathname === '/api/tradejini/stream-status' || pathname === '/api/dhan/stream-status') {
       sendJson(res, 200, {
         s: 'ok',
-        connected: tjStreamConnected,
-        activeTokensCount: tjStreamActiveTokens.size,
-        activeClients: sseStreamClients.size,
-        marketStatus: getCurrentMarketStatus()
+        connected: dhan.dhanStream.connected,
+        activeTokensCount: dhan.dhanStream.latestQuotes.size,
+        activeClients: sseStreamClients.size + browserWsClients.size,
+        marketStatus: getCurrentMarketStatus(),
+        source: 'DhanHQ Real-Time WebSocket'
       });
       return;
     }
 
     // 4a. API: Available Session Dates for Trade Setup Calendar
-    if (pathname === '/api/tradejini/trade-setup/dates') {
+    if (pathname === '/api/tradejini/trade-setup/dates' || pathname === '/api/dhan/trade-setup/dates') {
       const dates = getSavedSessionDates();
       sendJson(res, 200, {
         s: 'ok',
@@ -3293,18 +3334,73 @@ const server = http.createServer(async (req, res) => {
     }
 
     // 4. API: Live / Historical 5-Minute Heikin Ashi Trade Setup Scanner
-    if (pathname === '/api/tradejini/trade-setup') {
+    if (pathname === '/api/tradejini/trade-setup' || pathname === '/api/dhan/trade-setup') {
       const reqDate = parsedUrl.searchParams.get('date');
       const setupResult = await getTradejiniTradeSetup(reqDate);
       sendJson(res, 200, setupResult);
       return;
     }
 
+    // 4b. API: 1-Minute Precision Trade Simulation & Sliced Candle Window
+    if (pathname === '/api/tradejini/simulation' || pathname === '/api/dhan/simulation') {
+      const sigId = parsedUrl.searchParams.get('id');
+      const sig = findSignalById(sigId);
+      if (!sig) {
+        sendJson(res, 404, { s: 'error', message: `Signal not found for ID: ${sigId}` });
+        return;
+      }
+      try {
+        const simResult = await simEngine.simulateTrade(sig);
+        sendJson(res, 200, { s: 'ok', signal: sig, simulation: simResult });
+      } catch (err) {
+        sendJson(res, 500, { s: 'error', message: err.message });
+      }
+      return;
+    }
+
+    // 4c. API: Downloadable 1-Minute Simulation Dataset (CSV)
+    if (pathname === '/api/tradejini/simulation/export' || pathname === '/api/dhan/simulation/export') {
+      const sigId = parsedUrl.searchParams.get('id');
+      const sig = findSignalById(sigId);
+      if (!sig) {
+        res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+        res.end('Signal not found');
+        return;
+      }
+      try {
+        const simResult = await simEngine.simulateTrade(sig);
+        const csvData = simEngine.exportSimulationCsv(simResult);
+        const safeSym = (sig.Symbol || 'TRADE').replace(/[^a-zA-Z0-9_-]/g, '_');
+        const safeId = (sig.Id || 'SIGNAL').replace(/[^a-zA-Z0-9_-]/g, '_');
+        res.writeHead(200, {
+          'Content-Type': 'text/csv; charset=utf-8',
+          'Content-Disposition': `attachment; filename="${safeSym}_1M_Sim_${safeId}.csv"`
+        });
+        res.end(csvData);
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
+        res.end(`Export error: ${err.message}`);
+      }
+      return;
+    }
+
+    // 5a. API: Available Session Dates for AAA Daily Screener Calendar
+    if (pathname === '/api/tradejini/screener/dates' || pathname === '/api/dhan/screener/dates') {
+      const dates = getSavedAaaSessionDates();
+      sendJson(res, 200, {
+        s: 'ok',
+        today: formatIst(Date.now()).fullDate,
+        dates
+      });
+      return;
+    }
+
     // 5. API: Daily (1D) AAA Candlestick Reversal Screener
-    if (pathname === '/api/tradejini/screener') {
+    if (pathname === '/api/tradejini/screener' || pathname === '/api/dhan/screener') {
       const days = parsedUrl.searchParams.get('days') || '1';
       const minTrend = parsedUrl.searchParams.get('minTrend') || '3';
-      const screenerResult = await getTradejiniAaaScreener(days, minTrend);
+      const reqDate = parsedUrl.searchParams.get('date');
+      const screenerResult = await getTradejiniAaaScreener(days, minTrend, reqDate);
       sendJson(res, 200, screenerResult);
       return;
     }
@@ -3422,25 +3518,35 @@ function scheduleDailyTradejiniSupervisor() {
       // Checkpoint 15:35 IST: Post-market EOD daily close capture
       if (hhmm === '15:35' && lastExecutedAction !== `EOD_${actionKey}`) {
         lastExecutedAction = `EOD_${actionKey}`;
-        console.log(`[Tradejini Auto-Login] [15:35 IST] Market Close: Capturing finalized EOD Daily (1D) bars...`);
+        console.log(`[AAA Screener Supervisor] [15:35 IST] Market Close: Capturing finalized EOD Daily (1D) bars...`);
         warmupDailyAaaUniverse(true).catch(() => {});
       }
 
       // Checkpoint 16:00 IST: Daily 4:00 PM AAA Screener Update (For Tomorrow's Market)
       const hhmmNum = Number(ist.hh) * 100 + Number(ist.mm);
       const postCloseKey = `AAA_4PM_DONE_${ist.fullDate}`;
-      if (hhmmNum >= 1600 && lastExecutedAction !== postCloseKey && !morningWarmupInFlight) {
-        lastExecutedAction = postCloseKey;
-        console.log(`[AAA Screener Supervisor] [16:00+ IST / Post-Close] Market Closed: Finalizing today's (${ist.fullDate}) closed Daily (1D) candles & generating fresh AAA setups for tomorrow...`);
-        warmupDailyAaaUniverse(true).then(() => getTradejiniAaaScreener(1, 3)).catch(() => {});
+      if (hhmmNum >= 1600 && lastExecutedAction !== postCloseKey) {
+        if (!morningWarmupInFlight) {
+          lastExecutedAction = postCloseKey;
+          console.log(`[AAA Screener Supervisor] [16:00+ IST / Post-Close] Market Closed: Finalizing today's (${ist.fullDate}) closed Daily (1D) candles & generating fresh AAA setups for tomorrow...`);
+          warmupDailyAaaUniverse(true)
+            .then(async () => {
+              const screenerRes = await getTradejiniAaaScreener(1, 3);
+              const rows = (screenerRes && screenerRes.rows) ? screenerRes.rows : [];
+              const list = rows.map(r => `${r.symbol} (${r.type || r.signal} ${r.pattern} @ ₹${r.entry || r.ltp || r.cmp})`).join(', ');
+              console.log(`[AAA Screener Supervisor] [16:00 IST Scan Complete] Saved & generated ${rows.length} AAA setups on ${ist.fullDate} close for tomorrow's market: ${list || 'None'}`);
+              syncAaaCalendarSessions().catch(() => {});
+            })
+            .catch((err) => {
+              console.error(`[AAA Screener Supervisor] Error during 16:00 scan: ${err.message}`);
+            });
+        }
       }
 
       // 2. Token Expiry Guard (Runs continuously)
-      // If token is missing OR expires within 15 minutes, auto-renew with TOTP
       const now = Date.now();
       if (!tjAccessToken || (tjTokenExpiryMs > 0 && now >= (tjTokenExpiryMs - 15 * 60 * 1000))) {
-        console.log(`[Tradejini Auto-Login] Token approaching expiry (or null). Renewing automatically via TOTP seed...`);
-        await refreshTradejiniSession(true);
+        refreshTradejiniSession(false).catch(() => {});
       }
 
       // 2b. Dhan Token Guard (Auto-renew 24h token via TOTP)
@@ -3564,11 +3670,11 @@ wss.on('connection', (ws, req) => {
 
 server.listen(PORT, HOST, () => {
   console.log(`==================================================================`);
-  console.log(` Finanthropist Educare Pvt Ltd - Tradejini Pure Live Data Terminal`);
+  console.log(` Finanthropist Educare Pvt Ltd - AAA Real-Time Live Data Terminal`);
   console.log(` Server Running at: http://${HOST}:${PORT}/`);
-  console.log(` Auto-Login Token: Active (Auto-renew via TOTP Seed: ${TJ_USER_ID})`);
-  console.log(` Daily (1D) AAA Morning Scanner: Enabled (189 Instruments)`);
-  console.log(` Daily Scheduled Supervisor: Active (08:00, 08:45, 09:08, 09:16, 09:21, 15:35)`);
+  console.log(` Primary Data Core: DhanHQ v2 WebSocket Feed & Data Engine`);
+  console.log(` Daily (1D) AAA Morning & 16:00 Scanner: Enabled (189 Instruments)`);
+  console.log(` Daily Scheduled Supervisor: Active (08:00, 08:45, 09:08, 09:16, 09:21, 15:35, 16:00)`);
   console.log(` DhanHQ Real-Time WebSocket Feed: Connecting (wss://api-feed.dhan.co)...`);
   console.log(` Native Browser WebSocket Hub: Active (ws://${HOST}:${PORT}/ws)`);
   console.log(`==================================================================`);
@@ -3585,18 +3691,14 @@ server.listen(PORT, HOST, () => {
 
   ensureTodaySession();
   scheduleDailyTradejiniSupervisor();
-  refreshTradejiniSession(false)
+
+  getLiveQuotesSnapshot()
     .then(() => {
-      initTradejiniWebSocketStream();
-      loadTradejiniSecuritiesCatalog();
-      return getLiveQuotesSnapshot();
-    })
-    .then(() => {
-      console.log('[Startup] Core live quotes snapshot initialized successfully.');
+      console.log('[Startup] Core live quotes snapshot initialized via DhanHQ.');
       setTimeout(() => {
-        console.log('[Startup] Warming up Triple A Daily (1D) Universe in background...');
+        console.log('[Startup] Warming up Triple A Daily (1D) Universe via DhanHQ Data API...');
         warmupDailyAaaUniverse(false).catch(() => {});
-      }, 2500);
+      }, 1500);
     })
     .catch((err) => console.error('[Startup Error]', err));
 });

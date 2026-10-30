@@ -7,6 +7,8 @@
 
 const AAAScreenerModule = (function () {
   let allSignals = [];
+  let availableDates = [];
+  let selectedDate = '';
   let currentFilter = {
     type: 'ALL',
     pattern: '',
@@ -227,21 +229,60 @@ const AAAScreenerModule = (function () {
     };
   }
 
+  function loadAvailableDates() {
+    const sel = document.getElementById('aaaDateSelect');
+    if (!sel) return;
+
+    fetch('./api/tradejini/screener/dates')
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (!data || data.s !== 'ok' || !Array.isArray(data.dates)) return;
+        availableDates = data.dates;
+        const isEn = window.I18N && window.I18N.getLang() === 'en';
+
+        let html = `<option value="" ${selectedDate === '' ? 'selected' : ''}>📅 ${isEn ? "Latest Closed Session" : "शेवटचा क्लोज"} (${data.today || 'Latest'})</option>`;
+
+        data.dates.forEach(d => {
+          if (d.isToday) return;
+          const isSel = selectedDate === d.fileKey || selectedDate === d.date;
+          const statText = isEn
+            ? `${d.stats ? d.stats.total : 0} setups • ${d.stats ? d.stats.targets : 0} targets`
+            : `${d.stats ? d.stats.total : 0} सेटअप्स • ${d.stats ? d.stats.targets : 0} टार्गेट्स`;
+          html += `<option value="${d.fileKey}" ${isSel ? 'selected' : ''}>📅 ${d.date} (${statText})</option>`;
+        });
+
+        sel.innerHTML = html;
+      })
+      .catch(err => console.warn('[AAA Screener] Failed to load session dates:', err));
+  }
+
+  function updateDateLabel() {
+    const lbl = document.getElementById('aaaSelectedDateLabel');
+    if (!lbl) return;
+    const isEn = window.I18N && window.I18N.getLang() === 'en';
+    if (!selectedDate) {
+      lbl.textContent = isEn ? 'Latest Close' : 'शेवटचा क्लोज';
+    } else {
+      lbl.textContent = selectedDate.replace(/_/g, ' ');
+    }
+  }
+
   function runScreener() {
     const tbody = document.getElementById('aaaSignalsTableBody');
     const emptyState = document.getElementById('aaaEmptyState');
     if (tbody && (!allSignals || allSignals.length === 0)) {
       tbody.innerHTML = `<tr><td colspan="10" style="text-align:center; padding: 35px; color: var(--accent); font-weight: 600;">
-        <i class="fas fa-spinner fa-spin" style="margin-right: 8px;"></i> Scanning Tradejini Daily (1D) Timeframe Datafeed for AAA Setups (Bearish Harami, Bullish Harami, Engulfing)...
+        <i class="fas fa-spinner fa-spin" style="margin-right: 8px;"></i> Scanning Daily (1D) Timeframe Datafeed for AAA Setups (Bearish Harami, Bullish Harami, Engulfing)...
       </td></tr>`;
       if (emptyState) emptyState.style.display = 'none';
     }
 
     const daysParam = encodeURIComponent(currentFilter.lookback || 1);
     const minTrendParam = encodeURIComponent(currentFilter.trendLength || 3);
+    const dateParam = selectedDate ? `&date=${encodeURIComponent(selectedDate)}` : '';
 
-    // Direct Dynamic Fetch from Tradejini CubePlus Live Daily (1D) Screener API
-    fetch(`./api/tradejini/screener?days=${daysParam}&minTrend=${minTrendParam}`)
+    // Direct Dynamic Fetch from Live/Historical Daily (1D) Screener API
+    fetch(`./api/tradejini/screener?days=${daysParam}&minTrend=${minTrendParam}${dateParam}`)
       .then(res => res.ok ? res.json() : null)
       .then(tjData => {
         if (tjData && tjData.s === 'ok' && Array.isArray(tjData.rows)) {
@@ -257,6 +298,22 @@ const AAAScreenerModule = (function () {
           if (elBuy) elBuy.textContent = tjData.rows.filter(s => s.type === 'BUY').length;
           if (elSell) elSell.textContent = tjData.rows.filter(s => s.type === 'SELL').length;
           if (elTime) elTime.textContent = tjData.updatedAt || new Date().toLocaleTimeString('en-IN');
+
+          if (tjData.sessionDate) {
+            const dtEl = document.getElementById('aaaSessionDateText');
+            if (dtEl) {
+              const isEn = window.I18N && window.I18N.getLang() === 'en';
+              if (tjData.isHistorical) {
+                dtEl.innerHTML = isEn
+                  ? `Historical Session: ${tjData.sessionDate} (Completed)`
+                  : `ऐतिहासिक सत्र: ${tjData.sessionDate} (पूर्ण झाले)`;
+              } else {
+                dtEl.innerHTML = isEn
+                  ? `Latest Completed Session (${tjData.sessionDate || 'Today'})`
+                  : `शेवटचा पूर्ण क्लोज (${tjData.sessionDate || 'आज'})`;
+              }
+            }
+          }
         } else {
           renderTable();
         }
@@ -572,7 +629,17 @@ const AAAScreenerModule = (function () {
   }
 
   function init() {
+    loadAvailableDates();
     runScreener();
+
+    const dateSelect = document.getElementById('aaaDateSelect');
+    if (dateSelect) {
+      dateSelect.addEventListener('change', (e) => {
+        selectedDate = e.target.value;
+        updateDateLabel();
+        runScreener();
+      });
+    }
 
     const btnScan = document.getElementById('aaaBtnScanNow');
     if (btnScan) {
@@ -632,6 +699,8 @@ const AAAScreenerModule = (function () {
   }
 
   function onLanguageChange() {
+    loadAvailableDates();
+    updateDateLabel();
     renderTable();
     const isEn = window.I18N && window.I18N.getLang() === 'en';
     const btnScan = document.getElementById('aaaBtnScanNow');
