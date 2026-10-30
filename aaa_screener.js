@@ -246,8 +246,8 @@ const AAAScreenerModule = (function () {
           if (d.isToday) return;
           const isSel = selectedDate === d.fileKey || selectedDate === d.date;
           const statText = isEn
-            ? `${d.stats ? d.stats.total : 0} setups • ${d.stats ? d.stats.targets : 0} targets`
-            : `${d.stats ? d.stats.total : 0} सेटअप्स • ${d.stats ? d.stats.targets : 0} टार्गेट्स`;
+            ? `${d.stats ? d.stats.total : 0} setups`
+            : `${d.stats ? d.stats.total : 0} सेटअप्स`;
           html += `<option value="${d.fileKey}" ${isSel ? 'selected' : ''}>📅 ${d.date} (${statText})</option>`;
         });
 
@@ -371,18 +371,19 @@ const AAAScreenerModule = (function () {
 
     if (emptyState) emptyState.style.display = 'none';
 
+    // Deduplicate by symbol + pattern + type
+    const seenMap = new Set();
+    filtered = filtered.filter(s => {
+      const k = `${s.symbol}_${s.type}_${s.pattern}`;
+      if (seenMap.has(k)) return false;
+      seenMap.add(k);
+      return true;
+    });
+
     tbody.innerHTML = filtered.map(s => {
       const isBuy = s.type === 'BUY';
       const isEn = window.I18N && window.I18N.getLang() === 'en';
       const typeBadge = isBuy ? '<span class="aaa-pill aaa-pill-buy">🟢 BUY (1D)</span>' : '<span class="aaa-pill aaa-pill-sell">🔴 SELL (1D)</span>';
-      const statusStyle = getStatusBadgeStyle(s.status || 'ACTIVE');
-      let statusText = s.statusText || '🟢 ट्रेड चालू (Active)';
-      if (window.I18N) {
-        if (s.status === 'TARGET_2_HIT') statusText = I18N.t('status_tgt2');
-        else if (s.status === 'TARGET_1_HIT') statusText = I18N.t('status_tgt1');
-        else if (s.status === 'SL_HIT') statusText = I18N.t('status_sl');
-        else if (s.status === 'ACTIVE') statusText = I18N.t('status_active');
-      }
       const trendBadge = isBuy
         ? `<span class="aaa-trend-badge down">📉 ${s.trendLength} Red Days</span>`
         : `<span class="aaa-trend-badge up">📈 ${s.trendLength} Green Days</span>`;
@@ -391,18 +392,13 @@ const AAAScreenerModule = (function () {
       const btnLoadText = window.I18N ? I18N.t('aaa_btn_load') : '📊 लोड (1D)';
 
       return `
-        <tr style="${s.status === 'SL_HIT' ? 'opacity:0.86;' : ''}">
+        <tr>
           <td>
             <div class="aaa-sym-title">${s.symbol} <span style="font-size:11px; color:${isBuy ? '#059669' : '#dc2626'}; font-weight:700;">(LTP: ₹${s.ltp || s.entry})</span></div>
             <div class="aaa-sym-sub">${s.name} ${s.date ? '&bull; 📅 संदर्भ: <strong>' + s.date + '</strong>' : ''}</div>
           </td>
           <td>
-            <div style="display:flex; flex-direction:column; gap:4px; align-items:flex-start;">
-              ${typeBadge}
-              <span style="font-size:10px; font-weight:800; padding:2px 7px; border-radius:999px; white-space:nowrap; ${statusStyle}">
-                ${statusText}
-              </span>
-            </div>
+            ${typeBadge}
           </td>
           <td>
             <span class="aaa-pattern-tag">${s.pattern}</span>
@@ -435,7 +431,7 @@ const AAAScreenerModule = (function () {
     const isEn = window.I18N && window.I18N.getLang() === 'en';
     const entryLbl = isEn ? 'Entry' : 'एन्ट्री';
     const ltpLbl = isEn ? 'Live LTP' : 'चालू भाव (LTP)';
-    document.getElementById('aaaModalSymbol').textContent = `${s.symbol} - ${s.pattern} (${s.type} • ${s.statusText || 'Active'})`;
+    document.getElementById('aaaModalSymbol').textContent = `${s.symbol} - ${s.pattern} (${s.type})`;
     document.getElementById('aaaModalSubtitle').textContent = `${entryLbl}: ₹${s.entry} | SL: ₹${s.stopLoss} | Tgt 1: ₹${s.target1} | Tgt 2: ₹${s.target2} | ${ltpLbl}: ₹${s.ltp || s.entry}`;
     modal.classList.add('active');
     setTimeout(() => drawCandlestickModal(s), 50);

@@ -2466,12 +2466,22 @@ function scanDailyCandlesForAaa(sym, dailyCandles, minTrend = 3, lookbackDays = 
 }
 
 function getAaaScanUniverse() {
-  return [
+  const combined = [
     ...CORE_INDICES.map((i) => i.symbol),
     ...CORE_MCX.map((m) => m.symbol),
     ...CORE_STOCKS,
     ...AAA_EXTRA_STOCKS
   ];
+  const seen = new Set();
+  const deduped = [];
+  for (const sym of combined) {
+    const clean = String(sym || '').toUpperCase().trim();
+    if (clean && !seen.has(clean)) {
+      seen.add(clean);
+      deduped.push(clean);
+    }
+  }
+  return deduped;
 }
 
 // Warm up the 60-day Daily OHLCV cache for the entire stock universe each morning & at 4:00 PM EOD
@@ -2554,8 +2564,19 @@ async function generateHistoricalAaaSession(targetDateStr, minTrend = 3) {
     }
   }
 
-  historicalSignals.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-  saveAaaSession(cleanTargetDate, historicalSignals, Math.max(scannedCount, scanSymbols.length));
+  // Deduplicate signals strictly by symbol + type + date + pattern
+  const seenSigKeys = new Set();
+  const dedupedSignals = [];
+  for (const s of historicalSignals) {
+    const key = `${s.symbol}_${s.type}_${s.date}_${s.pattern}`;
+    if (!seenSigKeys.has(key)) {
+      seenSigKeys.add(key);
+      dedupedSignals.push(s);
+    }
+  }
+
+  dedupedSignals.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+  saveAaaSession(cleanTargetDate, dedupedSignals, Math.max(scannedCount, scanSymbols.length));
 
   return {
     date: cleanTargetDate,
@@ -2564,14 +2585,14 @@ async function generateHistoricalAaaSession(targetDateStr, minTrend = 3) {
     timeframe: '1D (Daily Timeframe)',
     totalScanned: Math.max(scannedCount, scanSymbols.length),
     stats: {
-      total: historicalSignals.length,
-      buy: historicalSignals.filter(s => s.type === 'BUY').length,
-      sell: historicalSignals.filter(s => s.type === 'SELL').length,
-      active: historicalSignals.filter(s => s.status === 'ACTIVE').length,
-      targets: historicalSignals.filter(s => s.status === 'TARGET_1_HIT' || s.status === 'TARGET_2_HIT').length,
-      stopLosses: historicalSignals.filter(s => s.status === 'SL_HIT').length
+      total: dedupedSignals.length,
+      buy: dedupedSignals.filter(s => s.type === 'BUY').length,
+      sell: dedupedSignals.filter(s => s.type === 'SELL').length,
+      active: dedupedSignals.filter(s => s.status === 'ACTIVE').length,
+      targets: dedupedSignals.filter(s => s.status === 'TARGET_1_HIT' || s.status === 'TARGET_2_HIT').length,
+      stopLosses: dedupedSignals.filter(s => s.status === 'SL_HIT').length
     },
-    signals: historicalSignals
+    signals: dedupedSignals
   };
 }
 
@@ -2615,8 +2636,8 @@ async function getTradejiniAaaScreener(days = 1, minTrend = 3, requestedDate = n
   const todayStr = formatIst(Date.now()).fullDate;
   const cleanReqDate = requestedDate ? requestedDate.replace(/_/g, ' ').trim() : null;
 
-  // 1. Historical Session Date Requested via Calendar Dropdown
-  if (cleanReqDate && cleanReqDate !== 'latest' && cleanReqDate !== todayStr) {
+  // 1. Session Date Requested via Calendar Dropdown
+  if (cleanReqDate && cleanReqDate !== 'latest') {
     let sessionData = null;
     const fPath = getAaaSessionFilePath(cleanReqDate);
     if (fs.existsSync(fPath)) {
@@ -2624,7 +2645,7 @@ async function getTradejiniAaaScreener(days = 1, minTrend = 3, requestedDate = n
         sessionData = JSON.parse(fs.readFileSync(fPath, 'utf8'));
       } catch (e) {}
     }
-    if (!sessionData || !Array.isArray(sessionData.signals)) {
+    if (!sessionData || !Array.isArray(sessionData.signals) || sessionData.signals.length === 0) {
       sessionData = await generateHistoricalAaaSession(cleanReqDate, minTrend);
     }
 
@@ -2635,7 +2656,7 @@ async function getTradejiniAaaScreener(days = 1, minTrend = 3, requestedDate = n
       s: 'ok',
       timeframe: '1D (Daily Timeframe)',
       sessionDate: cleanReqDate,
-      isHistorical: true,
+      isHistorical: cleanReqDate !== todayStr,
       referenceDate: `${cleanReqDate} Closed Daily Session`,
       updatedAt: (sessionData && sessionData.updatedAt) || `${cleanReqDate} 15:30:00 IST`,
       totalScanned: (sessionData && sessionData.totalScanned) || 189,
@@ -2692,8 +2713,19 @@ async function getTradejiniAaaScreener(days = 1, minTrend = 3, requestedDate = n
     }
   }
 
+  // Deduplicate signals strictly by symbol + type + date + pattern
+  const seenRowKeys = new Set();
+  const dedupedRows = [];
+  for (const r of rows) {
+    const key = `${r.symbol}_${r.type}_${r.date}_${r.pattern}`;
+    if (!seenRowKeys.has(key)) {
+      seenRowKeys.add(key);
+      dedupedRows.push(r);
+    }
+  }
+
   // Sort newest daily setups first
-  rows.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+  dedupedRows.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
 
   const nowIst = formatIst(Date.now());
   const hhmmNum = Number(nowIst.hh) * 100 + Number(nowIst.mm);
@@ -2708,13 +2740,13 @@ async function getTradejiniAaaScreener(days = 1, minTrend = 3, requestedDate = n
     updatedAt: `${nowIst.fullDateTime} (1D Daily)`,
     totalScanned: Math.max(scannedCount, scanSymbols.length),
     warmedCount: scannedCount,
-    foundCount: rows.length,
-    rows,
+    foundCount: dedupedRows.length,
+    rows: dedupedRows,
     source: 'Tradejini & DhanHQ v2 Live Daily (1D) AAA Engine'
   };
 
   // Automatically persist today's session signals
-  saveAaaSession(todayStr, rows, Math.max(scannedCount, scanSymbols.length));
+  saveAaaSession(todayStr, dedupedRows, Math.max(scannedCount, scanSymbols.length));
 
   screenerCache.set(cacheKey, { ts: Date.now(), data: result });
   return result;
