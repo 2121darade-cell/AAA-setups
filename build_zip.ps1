@@ -14,7 +14,6 @@ $files = @(
     "assets/i18n.js",
     "assets/app.js",
     "assets/echarts.min.js",
-    "assets/logo.png",
     "assets/style.css",
     "assets/real_market_cache.js",
     "assets/nifty500_data.js",

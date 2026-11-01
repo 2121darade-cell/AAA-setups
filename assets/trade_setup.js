@@ -85,7 +85,6 @@ const TradeSetupModule = (function () {
     const entryLbl = isEn ? 'Entry' : 'एन्ट्री';
     const options = {
       body: `${entryLbl}: ₹${signal.Entry} | SL: ₹${signal.StopLoss} | CC: ${signal.CCPosition}`,
-      icon: './assets/logo.png',
       requireInteraction: false
     };
     try {
