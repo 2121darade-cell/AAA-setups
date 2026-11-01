@@ -1,5 +1,5 @@
 /**
- * Finanthropist Educare Pvt Ltd - Tradejini CubePlus Direct Feed Module
+ * Unified Trading Platform - Tradejini CubePlus Direct Feed Module
  * Broker: Cube Plus By Tradejini
  * App Name: Individual Access
  * Client Code: TR2488

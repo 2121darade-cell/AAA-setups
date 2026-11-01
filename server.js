@@ -1,5 +1,5 @@
 /**
- * Finanthropist Educare Pvt Ltd - Tradejini Dynamic Data Server & Web Host (Linux/Node.js)
+ * Unified Trading Platform - Dynamic Data Server & Web Host (Linux/Node.js)
  * 100% Pure Live Tradejini CubePlus API v2 Feed Engine
  * Zero synthetic/cached data • Live Candlesticks, Live Watchlist Quotes, Live 5m Heikin Ashi & AAA Screener
  */
@@ -1985,7 +1985,7 @@ async function getTradejiniTradeSetup(requestedDate = null) {
 
 // ============================================================================
 // 7. DAILY (1D) TIMEFRAME AAA CANDLESTICK SCREENER (Calculated Each Morning)
-// Strict Finanthropist Slide Rules for Bearish Harami, Bullish Harami,
+// Strict Standard Strategy Rules for Bearish Harami, Bullish Harami,
 // Bearish Engulfing, Bullish Engulfing, Bearish Piercing, Bullish Piercing,
 // Morning Star, and Evening Star
 // ============================================================================
@@ -2133,18 +2133,18 @@ function scanDailyCandlesForAaa(sym, dailyCandles, minTrend = 3, lookbackDays = 
 
     // ------------------------------------------------------------------------
     // A. 2-CANDLE SELL SETUPS (After Uptrend on Daily 1D)
-    //    1. Bearish Harami (Finanthropist Slide):
+    //    1. Bearish Harami (Standard Strategy Rule):
     //       - Uptrend -> Strong Green Mother candle (body >= 50% of its High-Low range)
     //       - Clean Red Baby candle (body <= 60% of Mother body, >= 30% of its own range)
     //       - Baby body strictly inside Mother body (cCurr.open < cPrev.close && cCurr.close > cPrev.open)
     //       - Baby wicks strictly inside Mother High/Low & Open (cCurr.high < cPrev.high && cCurr.low >= cPrev.open && cCurr.low > cPrev.low)
     //       - Entry (Sell / Short sell) = cCurr.close | SL = cPrev.high
-    //    2. Bearish Piercing (Finanthropist Slide):
+    //    2. Bearish Piercing (Standard Strategy Rule):
     //       - Uptrend -> Strong Green candle (body >= 45% of range)
     //       - Strong Red candle opens above Green close (cCurr.open > cPrev.close)
     //         and closes below 50% midpoint of Green body (cCurr.close < prevMid && cCurr.close > cPrev.open)
     //       - Entry (Sell / Short sell) = cCurr.close | SL = Math.max(cCurr.high, cPrev.high)
-    //    3. Bearish Engulfing (Finanthropist Slide):
+    //    3. Bearish Engulfing (Standard Strategy Rule):
     //       - Uptrend -> Green candle (body >= 30% of range)
     //       - Larger Red candle (body >= 50% of range) completely engulfs Green body
     //       - Entry (Sell / Short sell) = cCurr.close | SL = Math.max(cCurr.high, cPrev.high)
@@ -2234,18 +2234,18 @@ function scanDailyCandlesForAaa(sym, dailyCandles, minTrend = 3, lookbackDays = 
 
     // ------------------------------------------------------------------------
     // B. 2-CANDLE BUY SETUPS (After Downtrend on Daily 1D)
-    //    1. Bullish Harami (Finanthropist Slide):
+    //    1. Bullish Harami (Standard Strategy Rule):
     //       - Downtrend -> Strong Red Mother candle (body >= 50% of its High-Low range)
     //       - Clean Green Baby candle (body <= 60% of Mother body, >= 30% of its own range)
     //       - Baby body strictly inside Mother body (cCurr.open > cPrev.close && cCurr.close < cPrev.open)
     //       - Baby wicks strictly inside Mother High/Low & Open (cCurr.high <= cPrev.open && cCurr.high < cPrev.high && cCurr.low > cPrev.low)
     //       - Entry (Buy) = cCurr.close | SL = cPrev.low
-    //    2. Bullish Piercing (Finanthropist Slide):
+    //    2. Bullish Piercing (Standard Strategy Rule):
     //       - Downtrend -> Strong Red candle (body >= 45% of range)
     //       - Strong Green candle opens below Red close (cCurr.open < cPrev.close)
     //         and closes above 50% midpoint of Red body (cCurr.close > prevMid && cCurr.close < cPrev.open)
     //       - Entry (Buy) = cCurr.close | SL = Math.min(cCurr.low, cPrev.low)
-    //    3. Bullish Engulfing (Finanthropist Slide):
+    //    3. Bullish Engulfing (Standard Strategy Rule):
     //       - Downtrend -> Red candle (body >= 30% of range)
     //       - Larger Green candle (body >= 50% of range) completely engulfs Red body
     //       - Entry (Buy) = cCurr.close | SL = Math.min(cCurr.low, cPrev.low)
@@ -2334,7 +2334,7 @@ function scanDailyCandlesForAaa(sym, dailyCandles, minTrend = 3, lookbackDays = 
     }
 
     // ------------------------------------------------------------------------
-    // C. 3-CANDLE MORNING STAR & EVENING STAR (Finanthropist Slide - Daily 1D)
+    // C. 3-CANDLE MORNING STAR & EVENING STAR (Standard Strategy Rule - Daily 1D)
     //    - Morning Star:
     //      1. Forms after a Downtrend; Candle 1 (cFirst) is a strong Red candle (body >= 45% of range)
     //      2. Candle 2 (cPrev / Star, Red or Green): Small body (<= 35% of Candle 1 body),
@@ -3702,7 +3702,7 @@ wss.on('connection', (ws, req) => {
 
 server.listen(PORT, HOST, () => {
   console.log(`==================================================================`);
-  console.log(` Finanthropist Educare Pvt Ltd - AAA Real-Time Live Data Terminal`);
+  console.log(` Unified Trading Platform - AAA Real-Time Live Data Terminal`);
   console.log(` Server Running at: http://${HOST}:${PORT}/`);
   console.log(` Primary Data Core: DhanHQ v2 WebSocket Feed & Data Engine`);
   console.log(` Daily (1D) AAA Morning & 16:00 Scanner: Enabled (189 Instruments)`);

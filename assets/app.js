@@ -1,5 +1,5 @@
 /**
- * Finanthropist Educare Pvt Ltd - Unified Trading Platform 2.0
+ * Unified Trading Platform 2.0
  * 3-in-1 Platform: Chart • Trade Setup (Heikin Ashi Scanner) • AAA (Nifty 200 Screener)
  * White Theme • Major Indices • Full Day Candles (09:15 - 15:30) • Real-Time SSE Cloud Sync
  */
@@ -42,9 +42,9 @@ function formatIst(unixMs) {
 window.formatIst = formatIst;
 
 const DEFAULT_USERS = [
-  { id: "usr_admin", name: "Admin Finanthropist", phone: "9999999999", email: "admin@finanthropist.com", status: "APPROVED", date: "2026-09-18 09:00", vipKey: "VIP-ADMIN-777" },
-  { id: "usr_demo", name: "Demo Student", phone: "9822000000", email: "demo@finanthropist.com", status: "APPROVED", date: "2026-09-18 09:15", vipKey: "VIP-DEMO-100" },
-  { id: "usr_user_test", name: "test", phone: "9359998294", email: "9359998294@finanthropist.com", status: "PENDING", date: "2026-09-18 17:30", vipKey: "VIP-8294-101" }
+  { id: "usr_admin", name: "System Admin", phone: "9999999999", email: "admin@tradingplatform.com", status: "APPROVED", date: "2026-09-18 09:00", vipKey: "VIP-ADMIN-777" },
+  { id: "usr_demo", name: "Demo User", phone: "9822000000", email: "demo@tradingplatform.com", status: "APPROVED", date: "2026-09-18 09:15", vipKey: "VIP-DEMO-100" },
+  { id: "usr_user_test", name: "test", phone: "9359998294", email: "9359998294@tradingplatform.com", status: "PENDING", date: "2026-09-18 17:30", vipKey: "VIP-8294-101" }
 ];
 
 function showToastNotification(msg, type = "info") {
@@ -691,7 +691,7 @@ const AuthEngine = {
         id: `vip_${Date.now()}`,
         name: "VIP Member",
         phone: "9822000000",
-        email: "vip@finanthropist.com",
+        email: "vip@tradingplatform.com",
         tradejiniClientId: "TR2488",
         status: "APPROVED"
       };
@@ -864,7 +864,7 @@ const AuthEngine = {
   },
 
   copyVipKey(key, name) {
-    const fullText = `Finanthropist Educare VIP Access Key for ${name}:\nKey: ${key}\nLink: ${window.location.origin}${window.location.pathname}?vip=${key}`;
+    const fullText = `VIP Access Key for ${name}:\nKey: ${key}\nLink: ${window.location.origin}${window.location.pathname}?vip=${key}`;
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(fullText).then(() => {
         showToastNotification("VIP Key copied to clipboard!", "success");
@@ -1081,7 +1081,7 @@ const AuthEngine = {
         const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(db, null, 2));
         const a = document.createElement('a');
         a.setAttribute("href", dataStr);
-        a.setAttribute("download", `finanthropist_users_${Date.now()}.json`);
+        a.setAttribute("download", `trading_users_${Date.now()}.json`);
         document.body.appendChild(a);
         a.click();
         a.remove();
@@ -3570,7 +3570,7 @@ function initApplication() {
         const a = document.createElement('a');
         a.href = url;
         const sym = (AppState.currentAsset && AppState.currentAsset.symbol) ? AppState.currentAsset.symbol.replace(/\s+/g, '_') : 'Chart';
-        a.download = `Finanthropist_${sym}_Chart.png`;
+        a.download = `Trading_${sym}_Chart.png`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);

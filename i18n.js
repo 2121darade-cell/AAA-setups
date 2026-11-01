@@ -1,12 +1,12 @@
 // ============================================================================
-// FINANTHROPIST EDUCARE 2.0 - BILINGUAL I18N MODULE (मराठी & ENGLISH)
+// UNIFIED TRADING PLATFORM 2.0 - BILINGUAL I18N MODULE (मराठी & ENGLISH)
 // Comprehensive Application Dictionary & Reactive Language Switcher
 // ============================================================================
 
 const I18N_TRANSLATIONS = {
   mr: {
     // Header & Brand
-    brand_sub: "प्रायव्हेट लिमिटेड • रिअल-टाईम ट्रेडिंग सूट",
+    brand_sub: "रिअल-टाईम ट्रेडिंग व ॲनालिटिक्स सूट",
     nav_chart: "चार्ट",
     nav_trade_setup: "ट्रेड सेटअप",
     nav_aaa: "AAA स्क्रिनर",
@@ -144,7 +144,7 @@ const I18N_TRANSLATIONS = {
 
     // Modals & Authentication (Tradejini Onboarding)
     auth_modal_title: "पोर्टल ॲक्सेस (Tradejini Login & Onboarding)",
-    auth_modal_desc: "Finanthropist Educare च्या अधिकृत ट्रेडिंग प्लॅटफॉर्मवर आपले स्वागत आहे.",
+    auth_modal_desc: "अधिकृत ट्रेडिंग प्लॅटफॉर्मवर आपले स्वागत आहे.",
     auth_tab_login: "🔑 लॉग इन करा",
     auth_tab_register: "📝 Tradejini नवीन नोंदणी",
     auth_login_helper: "तुमच्या Tradejini क्लायंट आयडी किंवा नोंदणीकृत मोबाईल नंबरने लॉग इन करा.",
@@ -166,7 +166,7 @@ const I18N_TRANSLATIONS = {
     auth_ph_tj_id: "उदा. TR2488 / TJ1234...",
     auth_no_tj_title: "तुमच्याकडे Tradejini खाते नाही का?",
     auth_no_tj_desc: "कृपया नवीन Tradejini डिमॅट व ट्रेडिंग खाते उघडण्यासाठी खालील क्रमांकांवर संपर्क साधा किंवा व्हॉट्सॲप करा:",
-    auth_help_num1: "+91 98220 00000 (Finanthropist Support)",
+    auth_help_num1: "+91 98220 00000 (Support Desk)",
     auth_help_num2: "+91 93599 98294 (Account Opening Desk)",
     auth_help_whatsapp: "💬 Tradejini खाते उघडण्यासाठी WhatsApp करा",
     auth_btn_submit: "नोंदणी पूर्ण करा व ॲक्सेस विनंती पाठवा (Submit for Approval)",
@@ -210,7 +210,7 @@ const I18N_TRANSLATIONS = {
 
   en: {
     // Header & Brand
-    brand_sub: "Pvt Ltd • Real-Time Trading Suite",
+    brand_sub: "Real-Time Trading & Analytics Suite",
     nav_chart: "Chart",
     nav_trade_setup: "Trade Setup",
     nav_aaa: "AAA Screener",
@@ -348,7 +348,7 @@ const I18N_TRANSLATIONS = {
 
     // Modals & Authentication (Tradejini Onboarding)
     auth_modal_title: "Portal Access (Tradejini Login & Onboarding)",
-    auth_modal_desc: "Welcome to Finanthropist Educare's official trading platform.",
+    auth_modal_desc: "Welcome to the official trading platform.",
     auth_tab_login: "🔑 Log In",
     auth_tab_register: "📝 Tradejini Onboarding",
     auth_login_helper: "Log in using your Tradejini Client ID or registered mobile number.",
@@ -370,7 +370,7 @@ const I18N_TRANSLATIONS = {
     auth_ph_tj_id: "e.g. TR2488 / TJ1234...",
     auth_no_tj_title: "Don't have a Tradejini Account?",
     auth_no_tj_desc: "Please contact our support desk below or reach out on WhatsApp to open your Tradejini Demat & Trading account:",
-    auth_help_num1: "+91 98220 00000 (Finanthropist Support)",
+    auth_help_num1: "+91 98220 00000 (Support Desk)",
     auth_help_num2: "+91 93599 98294 (Account Opening Desk)",
     auth_help_whatsapp: "💬 Open Tradejini Account on WhatsApp",
     auth_btn_submit: "Submit for Admin Approval",

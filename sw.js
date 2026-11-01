@@ -1,5 +1,5 @@
-// Service Worker for Finanthropist Educare Trading Terminal
-const CACHE_NAME = 'finanthropist-v16-tj-onboarding';
+// Service Worker for Unified Trading Terminal
+const CACHE_NAME = 'trading-terminal-v18';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
@@ -9,7 +9,6 @@ const ASSETS_TO_CACHE = [
   './assets/trade_setup.js',
   './assets/aaa_screener.js',
   './assets/echarts.min.js',
-  './assets/logo.png',
   './manifest.json',
   './assets/cubeplus_feed.js'
 ];

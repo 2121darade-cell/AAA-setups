@@ -1,5 +1,5 @@
 // ============================================================================
-// FINANTHROPIST EDUCARE - AAA (DAILY 1D CANDLESTICK TREND & REVERSAL SCREENER)
+// AAA (DAILY 1D CANDLESTICK TREND & REVERSAL SCREENER)
 // Daily (1D) Reversal Strategies Calculated Each Morning:
 // Consecutive Red/Green Daily Trend -> Bearish Harami, Bullish Harami,
 // Bearish Engulfing, Bullish Engulfing, Piercing Line, Dark Cloud Cover, Morning/Evening Star
@@ -63,7 +63,7 @@ const AAAScreenerModule = (function () {
       if (isGreen(cCurr) && isRed(cPrev)) {
         const redTrend = countConsecutiveRed(dailyCandles, i - 1);
         if (redTrend >= minTrendLength && cPrev.close < dailyCandles[i - redTrend].close) {
-          // Strict Bullish Harami (Finanthropist Slide)
+          // Strict Bullish Harami (Standard Strategy Rule)
           if (
             isStrongMother &&
             cCurr.open >= cPrev.close &&
@@ -77,7 +77,7 @@ const AAAScreenerModule = (function () {
             signals.push(createSignal('BUY', 'Bullish Harami', symbol, stockInfo, dailyCandles, i, redTrend));
             continue;
           }
-          // Strict Bullish Engulfing (Finanthropist Slide)
+          // Strict Bullish Engulfing (Standard Strategy Rule)
           if (
             isMeaningfulPrev &&
             isStrongCurr &&
@@ -90,7 +90,7 @@ const AAAScreenerModule = (function () {
             signals.push(createSignal('BUY', 'Bullish Engulfing', symbol, stockInfo, dailyCandles, i, redTrend));
             continue;
           }
-          // Strict Bullish Piercing (Finanthropist Slide)
+          // Strict Bullish Piercing (Standard Strategy Rule)
           if (
             isStrongMother &&
             isStrongCurr &&
@@ -108,7 +108,7 @@ const AAAScreenerModule = (function () {
       if (isRed(cCurr) && isGreen(cPrev)) {
         const greenTrend = countConsecutiveGreen(dailyCandles, i - 1);
         if (greenTrend >= minTrendLength && cPrev.close > dailyCandles[i - greenTrend].close) {
-          // Strict Bearish Harami (Finanthropist Slide)
+          // Strict Bearish Harami (Standard Strategy Rule)
           if (
             isStrongMother &&
             cCurr.open <= cPrev.close &&
@@ -122,7 +122,7 @@ const AAAScreenerModule = (function () {
             signals.push(createSignal('SELL', 'Bearish Harami', symbol, stockInfo, dailyCandles, i, greenTrend));
             continue;
           }
-          // Strict Bearish Engulfing (Finanthropist Slide)
+          // Strict Bearish Engulfing (Standard Strategy Rule)
           if (
             isMeaningfulPrev &&
             isStrongCurr &&
@@ -135,7 +135,7 @@ const AAAScreenerModule = (function () {
             signals.push(createSignal('SELL', 'Bearish Engulfing', symbol, stockInfo, dailyCandles, i, greenTrend));
             continue;
           }
-          // Strict Bearish Piercing (Finanthropist Slide)
+          // Strict Bearish Piercing (Standard Strategy Rule)
           if (
             isStrongMother &&
             isStrongCurr &&
@@ -149,7 +149,7 @@ const AAAScreenerModule = (function () {
         }
       }
 
-      // 3. 3-CANDLE MORNING STAR & EVENING STAR (Finanthropist Slide)
+      // 3. 3-CANDLE MORNING STAR & EVENING STAR (Standard Strategy Rule)
       if (i >= minTrendLength + 1) {
         const cFirst = dailyCandles[i - 2];
         const firstBody = body(cFirst);

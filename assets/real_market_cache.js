@@ -1,5 +1,5 @@
 ﻿// ============================================================================
-// FINANTHROPIST EDUCARE 2.0 - REAL MARKET INTRADAY DATA FEED
+// REAL MARKET INTRADAY DATA FEED
 // 100% Genuine 5m Intraday Candles from NSE/BSE & MCX
 // Generated: 2026-09-18 18:54:40 IST
 // ============================================================================

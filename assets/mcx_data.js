@@ -1,5 +1,5 @@
 // ============================================================================
-// FINANTHROPIST EDUCARE - MCX COMMODITIES METADATA & DATA FEED
+// MCX COMMODITIES METADATA & DATA FEED
 // MCX Market Hours: Monday to Friday 09:00 AM to 11:30 PM / 11:55 PM IST
 // ============================================================================
 

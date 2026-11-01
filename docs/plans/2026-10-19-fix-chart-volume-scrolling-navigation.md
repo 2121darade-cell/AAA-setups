@@ -192,7 +192,7 @@
 
 **Files:**
 - Modify: `index.html` (bump cache-busting query strings `?v=20261019_v2`)
-- Modify: `sw.js` (update service worker cache version `finanthropist-v20261019_v2`)
+- Modify: `sw.js` (update service worker cache version `trading-terminal-v20261019_v2`)
 
 **Step 1: Local testing**
 - Restart local server, verify all 4 requirements.

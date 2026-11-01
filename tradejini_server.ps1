@@ -3,8 +3,8 @@ param(
 )
 
 # ==============================================================================
-# Finanthropist Educare Pvt Ltd - Tradejini Dynamic Data Server & Web Host
-# 100% Dynamic Tradejini CubePlus API v2 Feed Engine
+# Unified Trading Platform - Dynamic Data Server & Web Host
+# 100% Dynamic API Feed Engine
 # Auto-login every 24h via TOTP Seed • Real Live Candlestick Charts & AAA Screener
 # ==============================================================================
 
@@ -379,7 +379,7 @@ $listener.Prefixes.Add($url)
 try {
     $listener.Start()
     Write-Host "==================================================================" -ForegroundColor Cyan
-    Write-Host " Finanthropist Educare Pvt Ltd - Tradejini Pure Live Data Terminal" -ForegroundColor Yellow
+    Write-Host " Unified Trading Platform - Pure Live Data Terminal" -ForegroundColor Yellow
     Write-Host " Server Running at: $url" -ForegroundColor Green
     Write-Host " Auto-Login Token: Active (Auto-renew every 24h via TOTP Seed)" -ForegroundColor Green
     Write-Host " Press Ctrl+C to stop anytime." -ForegroundColor DarkGray

@@ -143,7 +143,7 @@
 
 **Files:**
 - Modify: `index.html` (bump query string to `?v=20261019_v3`)
-- Modify: `sw.js` (bump service worker cache to `finanthropist-v15-bilingual`)
+- Modify: `sw.js` (bump service worker cache to `trading-terminal-v15-bilingual`)
 
 **Step 1: Local Verification**
 - Toggle between `मराठी` and `ENG`:

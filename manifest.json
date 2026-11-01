@@ -1,18 +1,10 @@
 {
-  "name": "Finanthropist Educare Trading Terminal",
-  "short_name": "Finanthropist",
-  "description": "Institutional Indian Stock Market & Index Terminal for Finanthropist Educare Pvt Ltd",
+  "name": "Unified Trading Terminal",
+  "short_name": "Trading Terminal",
+  "description": "Institutional Indian Stock Market & Index Terminal",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#0b0e14",
-  "theme_color": "#b31922",
-  "orientation": "any",
-  "icons": [
-    {
-      "src": "./assets/logo.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any maskable"
-    }
-  ]
+  "theme_color": "#2563eb",
+  "orientation": "any"
 }

@@ -1,14 +1,14 @@
-﻿# Finanthropist Educare Pvt Ltd - Trading Terminal Portal
+# Unified Trading Terminal Portal
 
-An institutional-grade, responsive Indian Stock Market & Index Trading Terminal powered by official TradingView advanced charting technology, built specifically for **Finanthropist Educare Pvt Ltd**.
+An institutional-grade, responsive Indian Stock Market & Index Trading Terminal powered by official TradingView advanced charting technology.
 
 ---
 
 ## 🌟 Key Features
 
-1. **Official Branding & Identity**:
-   - High-resolution Finanthropist Educare Pvt Ltd logo and signature maroon/gold visual theme.
-   - Dedicated Educational mission, disclaimer, and company profile modal.
+1. **Clean Institutional Interface**:
+   - Signature dark/gold visual theme.
+   - Dedicated analytical mission, disclaimer, and platform profile modal.
 
 2. **Full Indian Market Coverage (NSE & BSE)**:
    - **Indices**: NIFTY 50, BANK NIFTY, SENSEX, FIN NIFTY, MIDCAP NIFTY, NIFTY NEXT 50, INDIA VIX, NIFTY IT, NIFTY AUTO, NIFTY FMCG, NIFTY METAL, NIFTY PHARMA, NIFTY ENERGY, etc.
@@ -49,39 +49,16 @@ You can also directly double-click `index.html` to open it in Chrome, Edge, Safa
 
 ---
 
-## 🌐 How to Host Online for FREE (Get a Shareable Public Web Link)
-
-You can publish this portal online in less than 60 seconds with 100% free hosting:
-
-### Option A: Netlify Drop (Easiest - 30 Seconds, No Coding)
-1. Go to [https://app.netlify.com/drop](https://app.netlify.com/drop) in your browser.
-2. Drag and drop the `finanthropist_trading_portal` folder into the upload box.
-3. Your web link will be live instantly (e.g. `https://finanthropist-educare.netlify.app`)!
-4. Anyone on any mobile phone, tablet, or computer can open this link anytime.
-
-### Option B: Vercel (Recommended for Custom Domains)
-1. Go to [https://vercel.com](https://vercel.com) and create a free account.
-2. Click **"Add New Project"** and import this repository, or install Vercel CLI (`npm i -g vercel && vercel`).
-3. Deploy to get an instant fast link like `https://finanthropist-terminal.vercel.app`.
-
-### Option C: GitHub Pages
-1. Push this folder to a GitHub repository (e.g. `finanthropist-terminal`).
-2. In GitHub repository settings -> **Pages** -> Select `main` branch root folder and save.
-3. Your portal will be accessible at `https://<your-username>.github.io/finanthropist-terminal/`.
-
----
-
 ## 📁 File Structure
 
 ```
-finanthropist_trading_portal/
+trading_portal/
 ├── index.html              # Main terminal user interface
 ├── manifest.json           # PWA metadata for installation
 ├── sw.js                   # Service worker for offline caching
 ├── serve.ps1               # Local HTTP web server script
 ├── run_server.bat          # 1-click launcher for Windows
 ├── assets/
-│   ├── logo.png            # Official Finanthropist Educare logo
 │   ├── style.css           # Premium dark terminal stylesheet
 │   └── app.js              # State manager & TradingView chart controller
 └── README.md               # Documentation & deployment guide
@@ -89,4 +66,4 @@ finanthropist_trading_portal/
 
 ---
 
-&copy; Finanthropist Educare Pvt Ltd. All rights reserved. Strictly for educational and analytical purposes.
+&copy; Trading Terminal. All rights reserved. Strictly for educational and analytical purposes.

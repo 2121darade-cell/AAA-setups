@@ -1,5 +1,5 @@
 // ============================================================================
-// FINANTHROPIST EDUCARE - TRADE SETUP (STOCK STRATEGY ALERT SCANNER)
+// TRADE SETUP (STOCK STRATEGY ALERT SCANNER)
 // 5-Minute Heikin Ashi Reversal & Confirmation Candle (CC) Strategy Engine
 // ============================================================================
 

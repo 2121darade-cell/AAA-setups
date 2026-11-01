@@ -1,4 +1,4 @@
-# Build Real Database for Finanthropist Trading Portal
+# Build Real Database for Trading Portal
 # 1. Download official NSE Bhavcopy for exact prices of all 501 NIFTY 500 stocks
 # 2. Fetch full 5m, 15m, 1d real candles for ABB and top market heavyweights
 
