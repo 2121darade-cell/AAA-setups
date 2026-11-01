@@ -2812,6 +2812,7 @@ function saveUsersDb(users) {
 
 function sanitizeUser(u) {
   if (!u) return null;
+  const isExpired = Boolean(u.role !== 'ADMIN' && u.status === 'APPROVED' && u.expiresAt && Date.now() > u.expiresAt);
   return {
     id: u.id,
     name: u.name,
@@ -2819,10 +2820,13 @@ function sanitizeUser(u) {
     phone: u.phone,
     tradejiniClientId: u.tradejiniClientId || '--',
     role: u.role || 'USER',
-    status: u.status || 'PENDING',
+    status: isExpired ? 'EXPIRED' : (u.status || 'PENDING'),
     date: u.date || '',
     vipKey: u.vipKey || '',
-    createdAt: u.createdAt || 0
+    createdAt: u.createdAt || 0,
+    expiresAt: u.expiresAt || null,
+    expiryDate: u.expiryDate || 'Lifetime',
+    isExpired: isExpired
   };
 }
 
@@ -3023,6 +3027,17 @@ const server = http.createServer(async (req, res) => {
         }
 
         if (user.status === 'APPROVED') {
+          const isExpired = Boolean(user.role !== 'ADMIN' && user.expiresAt && Date.now() > user.expiresAt);
+          if (isExpired) {
+            sendJson(res, 403, {
+              s: 'expired',
+              status: 'EXPIRED',
+              user: sanitizeUser(user),
+              expiryDate: user.expiryDate || 'Expired',
+              message: `तुमचा ॲक्सेस ${user.expiryDate || ''} रोजी संपला आहे (Access Expired). कृपया ॲडमिनशी संपर्क साधा.`
+            });
+            return;
+          }
           sendJson(res, 200, {
             s: 'ok',
             user: sanitizeUser(user),
@@ -3067,9 +3082,11 @@ const server = http.createServer(async (req, res) => {
         return;
       }
 
+      const isExpired = Boolean(user.role !== 'ADMIN' && user.status === 'APPROVED' && user.expiresAt && Date.now() > user.expiresAt);
+
       sendJson(res, 200, {
         s: 'ok',
-        status: user.status,
+        status: isExpired ? 'EXPIRED' : user.status,
         user: sanitizeUser(user)
       });
       return;
@@ -3226,6 +3243,140 @@ const server = http.createServer(async (req, res) => {
         }
 
         sendJson(res, 200, { s: 'ok', message: 'User deleted successfully' });
+      } catch (err) {
+        sendJson(res, 500, { s: 'error', message: err.message });
+      }
+      return;
+    }
+
+    // -------------------------------------------------------------------------
+    // ADMIN API 4: Update Single User Access & Expiry Date
+    // -------------------------------------------------------------------------
+    if (pathname === '/api/admin/update-user-access' && req.method === 'POST') {
+      try {
+        const body = await parseJsonBody(req);
+        const pin = body.adminPin || req.headers['x-admin-pin'];
+        if (pin !== 'Admin@Fin2026' && pin !== 'admin123' && pin !== 'Admin@Fin777') {
+          sendJson(res, 403, { s: 'error', message: 'Unauthorized: Invalid Admin PIN' });
+          return;
+        }
+
+        const userId = body.userId;
+        const phone = (body.phone || '').replace(/\D/g, '').slice(-10);
+        const db = getUsersDb();
+        const target = db.find(u => 
+          (userId && u.id === userId) || 
+          (phone && phone.length === 10 && u.phone && u.phone.replace(/\D/g, '').slice(-10) === phone)
+        );
+
+        if (!target) {
+          sendJson(res, 404, { s: 'error', message: 'User not found' });
+          return;
+        }
+
+        // Update status if provided
+        if (body.status && ['APPROVED', 'PENDING', 'REJECTED', 'EXPIRED'].includes(body.status)) {
+          target.status = body.status;
+        }
+
+        // Update expiry
+        if (body.hasOwnProperty('expiresAt')) {
+          target.expiresAt = (body.expiresAt && !isNaN(Number(body.expiresAt))) ? Number(body.expiresAt) : null;
+        }
+        if (body.hasOwnProperty('expiryDate')) {
+          target.expiryDate = body.expiryDate || 'Lifetime';
+        }
+
+        // Auto-heal status if expiry moved to future
+        if (target.status === 'EXPIRED' && target.expiresAt && target.expiresAt > Date.now()) {
+          target.status = 'APPROVED';
+        }
+
+        saveUsersDb(db);
+
+        broadcastNtfy({
+          action: 'USER_ACCESS_UPDATE',
+          type: 'USER_STATUS_UPDATE',
+          phone: target.phone,
+          id: target.id,
+          status: target.status,
+          expiresAt: target.expiresAt,
+          expiryDate: target.expiryDate,
+          timestamp: Date.now()
+        });
+
+        sendJson(res, 200, {
+          s: 'ok',
+          message: `Updated access and expiry for ${target.name}.`,
+          user: sanitizeUser(target)
+        });
+      } catch (err) {
+        sendJson(res, 500, { s: 'error', message: err.message });
+      }
+      return;
+    }
+
+    // -------------------------------------------------------------------------
+    // ADMIN API 5: Bulk Update Users Access & Expiry Date
+    // -------------------------------------------------------------------------
+    if (pathname === '/api/admin/bulk-update-users' && req.method === 'POST') {
+      try {
+        const body = await parseJsonBody(req);
+        const pin = body.adminPin || req.headers['x-admin-pin'];
+        if (pin !== 'Admin@Fin2026' && pin !== 'admin123' && pin !== 'Admin@Fin777') {
+          sendJson(res, 403, { s: 'error', message: 'Unauthorized: Invalid Admin PIN' });
+          return;
+        }
+
+        const userIds = Array.isArray(body.userIds) ? body.userIds : [];
+        if (userIds.length === 0) {
+          sendJson(res, 400, { s: 'error', message: 'No users selected for bulk update' });
+          return;
+        }
+
+        const db = getUsersDb();
+        const updatedUsers = [];
+
+        for (const u of db) {
+          if (userIds.includes(u.id)) {
+            // Update status if provided
+            if (body.status && ['APPROVED', 'PENDING', 'REJECTED', 'EXPIRED'].includes(body.status)) {
+              u.status = body.status;
+            }
+            // Update expiry if provided
+            if (body.hasOwnProperty('expiresAt')) {
+              u.expiresAt = (body.expiresAt && !isNaN(Number(body.expiresAt))) ? Number(body.expiresAt) : null;
+            }
+            if (body.hasOwnProperty('expiryDate')) {
+              u.expiryDate = body.expiryDate || 'Lifetime';
+            }
+            // Auto-heal status if expiry moved to future
+            if (u.status === 'EXPIRED' && u.expiresAt && u.expiresAt > Date.now()) {
+              u.status = 'APPROVED';
+            }
+            updatedUsers.push(u);
+          }
+        }
+
+        saveUsersDb(db);
+
+        broadcastNtfy({
+          action: 'BULK_USERS_UPDATE',
+          type: 'USER_STATUS_UPDATE',
+          count: updatedUsers.length,
+          userIds: userIds,
+          status: body.status || null,
+          expiresAt: body.expiresAt || null,
+          expiryDate: body.expiryDate || null,
+          timestamp: Date.now()
+        });
+
+        sendJson(res, 200, {
+          s: 'ok',
+          count: updatedUsers.length,
+          message: `Successfully updated ${updatedUsers.length} clients in bulk.`,
+          users: updatedUsers.map(sanitizeUser)
+        });
       } catch (err) {
         sendJson(res, 500, { s: 'error', message: err.message });
       }

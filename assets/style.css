@@ -2163,4 +2163,410 @@ body {
   100% { transform: rotate(360deg); }
 }
 
+/* ==========================================================================
+   Mobile Bottom Navigation Bar & Mobile Responsive Design
+   ========================================================================== */
+.mobile-bottom-nav {
+  display: none;
+}
+
+.watchlist-backdrop {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  /* Body & App Root adjustments for mobile bottom bar */
+  body {
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    height: 100% !important;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .views-wrapper {
+    height: auto !important;
+    min-height: calc(100vh - 56px - 52px) !important;
+    padding-bottom: 68px !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+  }
+
+  /* Fixed Mobile Bottom Nav Bar */
+  .mobile-bottom-nav {
+    display: flex !important;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 58px;
+    background: #ffffff;
+    border-top: 1px solid #e2e8f0;
+    box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.08);
+    z-index: 9999;
+    align-items: center;
+    justify-content: space-around;
+    padding: 0 4px calc(env(safe-area-inset-bottom, 0px));
+  }
+
+  .mobile-nav-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    height: 100%;
+    background: transparent;
+    border: none;
+    color: #64748b;
+    font-size: 10px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    padding: 6px 2px;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .mobile-nav-item:active {
+    transform: scale(0.95);
+  }
+
+  .mobile-nav-item.active {
+    color: #b31922;
+  }
+
+  .mobile-nav-item .mobile-nav-icon {
+    font-size: 18px;
+    line-height: 1;
+    transition: transform 0.15s ease;
+  }
+
+  .mobile-nav-item.active .mobile-nav-icon {
+    transform: scale(1.15);
+  }
+
+  .mobile-nav-item .mobile-nav-label {
+    letter-spacing: 0.2px;
+    line-height: 1;
+  }
+
+  /* Top Header on Mobile */
+  .app-header {
+    height: 52px !important;
+    padding: 0 10px !important;
+    gap: 6px !important;
+  }
+
+  .brand-section {
+    gap: 6px !important;
+  }
+
+  .brand-title {
+    font-size: 13px !important;
+    gap: 4px !important;
+  }
+
+  .brand-subtitle {
+    display: none !important;
+  }
+
+  /* Hide top navigation tabs on mobile because bottom nav handles it */
+  .nav-tabs-bar {
+    display: none !important;
+  }
+
+  .indices-bar {
+    display: none !important;
+  }
+
+  .header-search-wrap {
+    display: none !important;
+  }
+
+  .market-status {
+    padding: 2px 6px !important;
+    font-size: 9px !important;
+  }
+
+  .btn-login-header {
+    padding: 4px 8px !important;
+    font-size: 11px !important;
+  }
+
+  .user-badge-chip {
+    padding: 3px 8px !important;
+    font-size: 11px !important;
+  }
+
+  /* Off-canvas Watchlist Drawer on Mobile */
+  .watchlist-sidebar {
+    position: fixed !important;
+    top: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: min(340px, 86vw) !important;
+    height: 100vh !important;
+    max-height: 100vh !important;
+    background: #ffffff !important;
+    z-index: 10000 !important;
+    box-shadow: -8px 0 25px rgba(0, 0, 0, 0.2) !important;
+    transform: translateX(100%);
+    transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1) !important;
+    display: flex !important;
+    flex-direction: column !important;
+  }
+
+  .watchlist-sidebar.mobile-open {
+    transform: translateX(0) !important;
+  }
+
+  .watchlist-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.5);
+    backdrop-filter: blur(4px);
+    z-index: 9999;
+  }
+
+  .watchlist-backdrop.active {
+    display: block !important;
+  }
+
+  /* Chart View Mobile */
+  .main-container {
+    height: auto !important;
+    min-height: calc(100vh - 110px) !important;
+    flex-direction: column !important;
+  }
+
+  .charts-area {
+    width: 100% !important;
+    height: auto !important;
+    min-height: 480px !important;
+  }
+
+  .chart-cell {
+    height: calc(100vh - 120px) !important;
+    min-height: 460px !important;
+    display: flex !important;
+    flex-direction: column !important;
+  }
+
+  .chart-header-bar {
+    padding: 6px 8px !important;
+    gap: 6px !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    height: auto !important;
+  }
+
+  .chart-symbol-info {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    width: 100% !important;
+    flex-wrap: wrap !important;
+    gap: 4px !important;
+  }
+
+  .chart-symbol-name {
+    font-size: 15px !important;
+  }
+
+  .chart-live-price {
+    font-size: 15px !important;
+  }
+
+  /* Scrollable Toolbar Row on Mobile */
+  .chart-header-controls-row {
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    overflow-x: auto !important;
+    white-space: nowrap !important;
+    scrollbar-width: none !important;
+    -webkit-overflow-scrolling: touch !important;
+    padding-bottom: 2px !important;
+  }
+
+  .chart-header-controls-row::-webkit-scrollbar {
+    display: none !important;
+  }
+
+  .timeframe-group, .chart-type-group, .indicators-group {
+    display: inline-flex !important;
+    flex-wrap: nowrap !important;
+    gap: 3px !important;
+  }
+
+  .tf-btn, .chart-type-btn, .indicator-toggle-btn {
+    padding: 4px 7px !important;
+    font-size: 10.5px !important;
+    height: 26px !important;
+  }
+
+  /* Hide left drawing toolbar by default on mobile so chart gets 100% width */
+  .chart-left-toolbar {
+    display: none !important;
+  }
+
+  .chart-canvas-wrapper {
+    width: 100% !important;
+    flex: 1 1 auto !important;
+  }
+
+  #echarts-candlestick-container {
+    height: 100% !important;
+    min-height: 340px !important;
+  }
+
+  /* Trade Setup View Mobile */
+  #view-trade-setup {
+    padding: 10px 8px !important;
+  }
+
+  .ts-rules-card {
+    padding: 10px 12px !important;
+    gap: 8px !important;
+  }
+
+  .ts-rules-title {
+    font-size: 12px !important;
+  }
+
+  .ts-rules-sub {
+    font-size: 10.5px !important;
+    line-height: 1.4 !important;
+  }
+
+  .ts-session-banner {
+    padding: 8px 10px !important;
+    font-size: 11px !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+
+  .ts-toolbar {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 8px !important;
+  }
+
+  .ts-filter-tabs {
+    overflow-x: auto !important;
+    white-space: nowrap !important;
+    scrollbar-width: none !important;
+    -webkit-overflow-scrolling: touch !important;
+    padding-bottom: 2px !important;
+    width: 100% !important;
+  }
+
+  .ts-filter-tabs::-webkit-scrollbar {
+    display: none !important;
+  }
+
+  .ts-tab-btn {
+    padding: 6px 10px !important;
+    font-size: 11px !important;
+  }
+
+  .ts-actions-group {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 6px !important;
+    width: 100% !important;
+  }
+
+  .ts-btn-primary, .ts-btn-secondary {
+    flex: 1 !important;
+    min-width: 100px !important;
+    padding: 8px 10px !important;
+    font-size: 11px !important;
+    justify-content: center !important;
+  }
+
+  .ts-signals-grid {
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+  }
+
+  .ts-signal-card {
+    padding: 12px !important;
+  }
+
+  /* AAA Screener View Mobile */
+  #view-aaa {
+    padding: 10px 8px !important;
+  }
+
+  .aaa-stats-row {
+    grid-template-columns: 1fr 1fr !important;
+    gap: 8px !important;
+  }
+
+  .aaa-stat-card {
+    padding: 10px !important;
+  }
+
+  .aaa-stat-title {
+    font-size: 10.5px !important;
+  }
+
+  .aaa-stat-val {
+    font-size: 18px !important;
+  }
+
+  .aaa-controls-bar {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 8px !important;
+  }
+
+  .aaa-seg-group {
+    width: 100% !important;
+    display: flex !important;
+  }
+
+  .aaa-seg-btn {
+    flex: 1 !important;
+    text-align: center !important;
+    padding: 6px 4px !important;
+  }
+
+  .aaa-filter-select, #aaaSearchInput {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  .aaa-table-wrapper {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    border-radius: 8px !important;
+  }
+
+  .aaa-table {
+    min-width: 650px !important;
+  }
+
+  .aaa-table th, .aaa-table td {
+    padding: 8px 10px !important;
+    font-size: 11.5px !important;
+  }
+
+  /* Modals Mobile */
+  .modal-overlay {
+    padding: 12px !important;
+    align-items: center !important;
+  }
+
+  .modal-card {
+    width: calc(100vw - 24px) !important;
+    max-width: 440px !important;
+    max-height: 88vh !important;
+    margin: auto !important;
+    overflow-y: auto !important;
+  }
+}
+
 

@@ -329,13 +329,16 @@
       align-items: center;
       justify-content: center;
       z-index: 1000;
+      padding: 16px;
+      box-sizing: border-box;
     }
     .pin-card {
       background: #ffffff;
       border-radius: 16px;
       padding: 32px 28px;
       width: 100%;
-      max-width: 380px;
+      max-width: min(380px, calc(100vw - 32px));
+      box-sizing: border-box;
       box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2);
       text-align: center;
     }
@@ -419,6 +422,336 @@
       50% { transform: scale(1.3); opacity: 1; }
       100% { transform: scale(0.95); opacity: 0.9; }
     }
+
+    /* Expiry Badges & Access Controls */
+    .badge-expiry {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 8px;
+      border-radius: 9999px;
+      font-size: 11px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .badge-expiry-lifetime {
+      background: #f1f5f9;
+      color: #475569;
+      border: 1px solid #cbd5e1;
+    }
+    .badge-expiry-active {
+      background: #d1fae5;
+      color: #047857;
+      border: 1px solid #a7f3d0;
+    }
+    .badge-expiry-expiring {
+      background: #fef3c7;
+      color: #b45309;
+      border: 1px solid #fde68a;
+    }
+    .badge-expiry-expired {
+      background: #fee2e2;
+      color: #b91c1c;
+      border: 1px solid #fca5a5;
+    }
+    .badge-expired {
+      background: #fee2e2;
+      color: #b91c1c;
+      border: 1px solid #fca5a5;
+    }
+
+    .btn-access {
+      background: #eff6ff;
+      color: #1d4ed8;
+      border: 1px solid #bfdbfe;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-weight: 700;
+      font-size: 11px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .btn-access:hover {
+      background: #dbeafe;
+      border-color: #93c5fd;
+    }
+
+    /* Floating Bulk Action Bar */
+    .bulk-action-bar {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #0f172a;
+      color: #ffffff;
+      padding: 10px 20px;
+      border-radius: 50px;
+      display: none;
+      align-items: center;
+      gap: 14px;
+      box-shadow: 0 12px 32px rgba(15, 23, 42, 0.4);
+      z-index: 900;
+      border: 1px solid #334155;
+    }
+    .bulk-btn {
+      background: #334155;
+      color: #ffffff;
+      border: 1px solid #475569;
+      border-radius: 20px;
+      padding: 6px 14px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .bulk-btn:hover {
+      background: #475569;
+    }
+    .bulk-btn.primary {
+      background: #2563eb;
+      border-color: #3b82f6;
+    }
+    .bulk-btn.primary:hover {
+      background: #1d4ed8;
+    }
+    .bulk-btn.clear {
+      background: transparent;
+      border: none;
+      color: #94a3b8;
+      font-size: 12px;
+      cursor: pointer;
+      padding: 4px 8px;
+    }
+    .bulk-btn.clear:hover {
+      color: #ffffff;
+    }
+
+    /* Admin Modal Dialogs */
+    .admin-modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(15, 23, 42, 0.65);
+      backdrop-filter: blur(5px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1100;
+      padding: 16px;
+      box-sizing: border-box;
+    }
+    .admin-modal-card {
+      background: #ffffff;
+      border-radius: 14px;
+      width: 100%;
+      max-width: 480px;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+      overflow: hidden;
+      animation: modalFadeIn 0.2s ease-out;
+      box-sizing: border-box;
+    }
+    @keyframes modalFadeIn {
+      from { opacity: 0; transform: scale(0.96); }
+      to { opacity: 1; transform: scale(1); }
+    }
+    .admin-modal-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid #e2e8f0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .admin-modal-header h3 {
+      margin: 0;
+      font-size: 16px;
+      font-weight: 800;
+      color: #0f172a;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .admin-modal-close {
+      background: none;
+      border: none;
+      font-size: 18px;
+      color: #94a3b8;
+      cursor: pointer;
+      line-height: 1;
+      padding: 4px;
+    }
+    .admin-modal-close:hover {
+      color: #0f172a;
+    }
+    .admin-modal-body {
+      padding: 20px;
+    }
+    .admin-modal-footer {
+      padding: 14px 20px;
+      background: #f8fafc;
+      border-top: 1px solid #e2e8f0;
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+    }
+    .btn-cancel {
+      background: #ffffff;
+      border: 1px solid #cbd5e1;
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 700;
+      color: #475569;
+      cursor: pointer;
+    }
+    .btn-save {
+      background: #2563eb;
+      border: 1px solid #1d4ed8;
+      padding: 8px 18px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 700;
+      color: #ffffff;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .btn-save:hover {
+      background: #1d4ed8;
+    }
+    .preset-btn {
+      background: #f1f5f9;
+      border: 1px solid #cbd5e1;
+      padding: 5px 10px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+      color: #334155;
+      transition: all 0.15s;
+    }
+    .preset-btn:hover {
+      background: #e2e8f0;
+      color: #0f172a;
+    }
+
+    /* Mobile Responsive Overhaul */
+    @media (max-width: 768px) {
+      html, body {
+        overflow-x: hidden !important;
+        max-width: 100vw !important;
+      }
+      .admin-nav {
+        padding: 10px 14px;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+        width: 100%;
+        box-sizing: border-box;
+        max-width: 100vw;
+      }
+      .admin-nav > div:last-child {
+        width: 100%;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .cloud-pulse { display: none; }
+      .admin-title-box h1 { font-size: 15px; word-break: break-word; }
+      .admin-subtitle { font-size: 10px; white-space: normal; word-break: break-word; }
+      .admin-container {
+        margin: 12px auto;
+        padding: 0 10px;
+        max-width: 100vw;
+        box-sizing: border-box;
+      }
+      .kpi-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 8px;
+        margin-bottom: 16px;
+      }
+      .kpi-card {
+        padding: 12px 10px;
+        gap: 10px;
+      }
+      .kpi-icon {
+        width: 36px;
+        height: 36px;
+        font-size: 18px;
+      }
+      .kpi-info h4 { font-size: 10px; }
+      .kpi-info .val { font-size: 18px; }
+      .admin-tabs-bar {
+        overflow-x: auto;
+        white-space: nowrap;
+        -webkit-overflow-scrolling: touch;
+        gap: 6px;
+        padding-bottom: 4px;
+        max-width: 100%;
+      }
+      .admin-tab-btn {
+        padding: 8px 12px;
+        font-size: 12px;
+      }
+      .panel-card {
+        padding: 14px 10px;
+        border-radius: 10px;
+        margin-bottom: 16px;
+        max-width: 100%;
+        box-sizing: border-box;
+      }
+      .panel-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+      }
+      .panel-header > div {
+        width: 100%;
+      }
+      .panel-header input {
+        width: 100% !important;
+        box-sizing: border-box;
+      }
+      .bulk-action-bar {
+        width: calc(100% - 24px);
+        left: 12px;
+        transform: none;
+        border-radius: 14px;
+        padding: 10px 12px;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+        bottom: 10px;
+        box-sizing: border-box;
+      }
+      .bulk-action-bar > div {
+        justify-content: center;
+      }
+      .pin-modal-overlay {
+        padding: 16px !important;
+        box-sizing: border-box !important;
+      }
+      .pin-card {
+        width: 100% !important;
+        max-width: 340px !important;
+        margin: auto !important;
+        padding: 24px 18px !important;
+        box-sizing: border-box !important;
+      }
+      .admin-modal-card {
+        width: 100%;
+        max-width: 95vw;
+        box-sizing: border-box;
+      }
+    }
   </style>
 </head>
 <body>
@@ -491,7 +824,7 @@
         <div class="kpi-icon" style="background:#f3e8ff; color:#7e22ce;">⭐</div>
         <div class="kpi-info">
           <h4>VIP Master Code</h4>
-          <div class="val" style="font-size:18px; font-family:'JetBrains Mono', monospace; color:#7e22ce;">FINVIP2026</div>
+          <div class="val" style="font-size:18px; font-family:'JetBrains Mono', monospace; color:#7e22ce;">VIP2026</div>
         </div>
       </div>
     </div>
@@ -531,6 +864,7 @@
         <table class="admin-table">
           <thead>
             <tr>
+              <th style="width:36px; text-align:center;"><input type="checkbox" id="selectAllPending" onchange="toggleSelectAll('pending', this.checked)"></th>
               <th>Client Name</th>
               <th>Mobile Number</th>
               <th>Tradejini Client ID</th>
@@ -562,9 +896,11 @@
         <table class="admin-table">
           <thead>
             <tr>
+              <th style="width:36px; text-align:center;"><input type="checkbox" id="selectAllApproved" onchange="toggleSelectAll('approved', this.checked)"></th>
               <th>Client Name</th>
               <th>Mobile Number</th>
               <th>Tradejini Client ID</th>
+              <th>Validity / Expiry</th>
               <th>Approval Date</th>
               <th>Status</th>
               <th style="text-align:right;">Actions</th>
@@ -593,10 +929,12 @@
         <table class="admin-table">
           <thead>
             <tr>
+              <th style="width:36px; text-align:center;"><input type="checkbox" id="selectAllAll" onchange="toggleSelectAll('all', this.checked)"></th>
               <th>Name</th>
               <th>Mobile</th>
               <th>Tradejini Client ID</th>
               <th>Role</th>
+              <th>Validity / Expiry</th>
               <th>Registration Date</th>
               <th>Status</th>
               <th style="text-align:right;">Manage</th>
@@ -652,6 +990,117 @@
 
   </main>
 
+  <!-- Sticky Floating Bulk Action Bar -->
+  <div class="bulk-action-bar" id="bulkActionBar">
+    <div style="display:flex; align-items:center; gap:8px;">
+      <span style="font-size:16px;">⚡</span>
+      <span><strong id="bulkSelectedCount">0</strong> clients selected</span>
+    </div>
+    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+      <button class="bulk-btn primary" onclick="openBulkEditModal()">📅 Bulk Expiry & Access</button>
+      <button class="bulk-btn" style="background:#10b981; border-color:#059669;" onclick="quickBulkApprove()">✅ Approve All</button>
+      <button class="bulk-btn" style="background:#f59e0b; border-color:#d97706;" onclick="quickBulkRevoke()">↩️ Revoke All</button>
+      <button class="bulk-btn clear" onclick="clearAllSelections()" title="Clear Selection">✕ Clear</button>
+    </div>
+  </div>
+
+  <!-- Single Edit User Access Modal -->
+  <div class="admin-modal-overlay" id="modalEditUserAccess" style="display:none;">
+    <div class="admin-modal-card">
+      <div class="admin-modal-header">
+        <h3>✏️ Edit Client Access & Expiry</h3>
+        <button class="admin-modal-close" onclick="closeEditAccessModal()">✕</button>
+      </div>
+      <div class="admin-modal-body">
+        <input type="hidden" id="editUserId" />
+        <input type="hidden" id="editUserPhone" />
+        <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:12px; margin-bottom:14px;">
+          <div style="font-weight:800; font-size:14px; color:#0f172a;" id="editClientNameDisplay">--</div>
+          <div style="font-size:12px; color:#64748b; margin-top:2px;">
+            Phone: <code id="editClientPhoneDisplay" style="font-family:'JetBrains Mono'; font-weight:700; color:#2563eb;">--</code> • Tradejini ID: <code id="editClientTjDisplay" style="font-family:'JetBrains Mono'; font-weight:700; color:#059669;">--</code>
+          </div>
+        </div>
+
+        <div style="margin-bottom:14px;">
+          <label style="display:block; font-size:12px; font-weight:700; color:#475569; margin-bottom:6px;">Account Status</label>
+          <select id="editAccessStatus" style="width:100%; box-sizing:border-box; padding:9px 12px; border:1.5px solid #cbd5e1; border-radius:8px; font-size:13px; font-weight:600;">
+            <option value="APPROVED">✅ APPROVED (Full Access)</option>
+            <option value="PENDING">🟡 PENDING (Awaiting Approval)</option>
+            <option value="EXPIRED">🔴 EXPIRED (Access Locked)</option>
+            <option value="REJECTED">❌ REJECTED (Access Denied)</option>
+          </select>
+        </div>
+
+        <div style="margin-bottom:14px;">
+          <label style="display:block; font-size:12px; font-weight:700; color:#475569; margin-bottom:6px;">Access Validity / Expiry Date</label>
+          <input type="date" id="editAccessExpiryDate" onchange="handleSingleDateChange()" style="width:100%; box-sizing:border-box; padding:9px 12px; border:1.5px solid #cbd5e1; border-radius:8px; font-size:13px; font-weight:600; margin-bottom:8px;" />
+          
+          <div style="display:flex; flex-wrap:wrap; gap:6px;">
+            <button type="button" class="preset-btn" onclick="setExpiryPreset(7)">+7 Days</button>
+            <button type="button" class="preset-btn" onclick="setExpiryPreset(30)">+30 Days</button>
+            <button type="button" class="preset-btn" onclick="setExpiryPreset(90)">+90 Days</button>
+            <button type="button" class="preset-btn" onclick="setExpiryPreset(180)">+6 Months</button>
+            <button type="button" class="preset-btn" onclick="setExpiryPreset(365)">+1 Year</button>
+            <button type="button" class="preset-btn" style="background:#ecfdf5; border-color:#a7f3d0; color:#047857;" onclick="setExpiryPreset(0)">♾️ Lifetime</button>
+          </div>
+          <small id="editExpirySummaryHint" style="display:block; margin-top:8px; font-size:11px; color:#64748b;">No expiration set = Lifetime access</small>
+        </div>
+      </div>
+      <div class="admin-modal-footer">
+        <button class="btn-cancel" onclick="closeEditAccessModal()">Cancel</button>
+        <button class="btn-save" id="btnSaveUserAccess" onclick="submitEditUserAccess()">Save Access Changes</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bulk Edit Access Modal -->
+  <div class="admin-modal-overlay" id="modalBulkEditAccess" style="display:none;">
+    <div class="admin-modal-card">
+      <div class="admin-modal-header">
+        <h3>⚡ Bulk Access & Expiry Editor</h3>
+        <button class="admin-modal-close" onclick="closeBulkEditModal()">✕</button>
+      </div>
+      <div class="admin-modal-body">
+        <div style="background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; padding:12px; margin-bottom:14px; font-size:12px; color:#1e40af;">
+          Applying changes to <strong id="bulkTargetCount">0</strong> selected clients.
+        </div>
+
+        <div style="margin-bottom:14px;">
+          <label style="display:block; font-size:12px; font-weight:700; color:#475569; margin-bottom:6px;">Update Status</label>
+          <select id="bulkAccessStatus" style="width:100%; box-sizing:border-box; padding:9px 12px; border:1.5px solid #cbd5e1; border-radius:8px; font-size:13px; font-weight:600;">
+            <option value="NO_CHANGE">— Keep Existing Status Unchanged —</option>
+            <option value="APPROVED">✅ APPROVED (Set All to Approved)</option>
+            <option value="PENDING">🟡 PENDING (Move to Pending)</option>
+            <option value="EXPIRED">🔴 EXPIRED (Lock Access)</option>
+            <option value="REJECTED">❌ REJECTED (Reject Access)</option>
+          </select>
+        </div>
+
+        <div style="margin-bottom:14px;">
+          <label style="display:block; font-size:12px; font-weight:700; color:#475569; margin-bottom:6px;">Update Expiry / Validity</label>
+          <select id="bulkExpiryMode" onchange="handleBulkExpiryModeChange()" style="width:100%; box-sizing:border-box; padding:9px 12px; border:1.5px solid #cbd5e1; border-radius:8px; font-size:13px; font-weight:600; margin-bottom:8px;">
+            <option value="NO_CHANGE">— Keep Existing Expiry Unchanged —</option>
+            <option value="LIFETIME">♾️ Set to Lifetime (No Expiry)</option>
+            <option value="CUSTOM_DATE">📅 Set Specific Expiry Date...</option>
+            <option value="DAYS_7">+7 Days from Today</option>
+            <option value="DAYS_30">+30 Days from Today (1 Month)</option>
+            <option value="DAYS_90">+90 Days from Today (3 Months)</option>
+            <option value="DAYS_180">+180 Days from Today (6 Months)</option>
+            <option value="DAYS_365">+1 Year from Today</option>
+          </select>
+
+          <div id="bulkCustomDateField" style="display:none;">
+            <input type="date" id="bulkAccessExpiryDate" style="width:100%; box-sizing:border-box; padding:9px 12px; border:1.5px solid #cbd5e1; border-radius:8px; font-size:13px; font-weight:600;" />
+          </div>
+        </div>
+      </div>
+      <div class="admin-modal-footer">
+        <button class="btn-cancel" onclick="closeBulkEditModal()">Cancel</button>
+        <button class="btn-save" id="btnSubmitBulkAccess" onclick="submitBulkUserAccess()">Apply to Selected Clients</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     // =========================================================================
     // ADMIN AUTHENTICATION & SSE REAL-TIME ENGINE
@@ -667,6 +1116,7 @@
 
     let currentAdminTab = 'pending';
     let lastHighlightedUserId = null;
+    let selectedUserIds = new Set();
 
     function getUsers() {
       try {
@@ -702,6 +1152,337 @@
       }, 4000);
     }
     window.showAdminToast = showAdminToast;
+
+    // Format Expiry Badge
+    function formatExpiryBadge(u) {
+      if (!u.expiresAt && (!u.expiryDate || u.expiryDate === 'Lifetime')) {
+        return `<span class="badge-expiry badge-expiry-lifetime" title="Lifetime access (no expiration)">♾️ Lifetime</span>`;
+      }
+      const now = Date.now();
+      const exp = Number(u.expiresAt);
+      if (u.isExpired || (exp && exp < now) || u.status === 'EXPIRED') {
+        const dateStr = u.expiryDate || (exp ? new Date(exp).toLocaleDateString('en-IN') : 'Expired');
+        return `<span class="badge-expiry badge-expiry-expired" title="Expired on ${dateStr}">🔴 Expired</span>`;
+      }
+      const daysLeft = exp ? Math.ceil((exp - now) / (1000 * 60 * 60 * 24)) : null;
+      const dateStr = u.expiryDate || (exp ? new Date(exp).toLocaleDateString('en-IN') : '');
+      if (daysLeft !== null && daysLeft <= 7) {
+        return `<span class="badge-expiry badge-expiry-expiring" title="Expires in ${daysLeft} days (${dateStr})">🟡 ${daysLeft}d left</span>`;
+      }
+      return `<span class="badge-expiry badge-expiry-active" title="Valid until ${dateStr}">🟢 ${dateStr || 'Active'}</span>`;
+    }
+
+    // Selection & Bulk Bar Handling
+    window.toggleUserSelection = function(userId, checked) {
+      if (checked) selectedUserIds.add(userId);
+      else selectedUserIds.delete(userId);
+      updateBulkBarState();
+    };
+
+    window.toggleSelectAll = function(tabType, checked) {
+      const users = getUsers();
+      let targetUsers = [];
+      if (tabType === 'pending') targetUsers = users.filter(u => u.status === 'PENDING');
+      else if (tabType === 'approved') targetUsers = users.filter(u => u.status === 'APPROVED');
+      else targetUsers = users;
+
+      targetUsers.forEach(u => {
+        if (checked) selectedUserIds.add(u.id);
+        else selectedUserIds.delete(u.id);
+      });
+      renderActiveTab();
+      updateBulkBarState();
+    };
+
+    window.clearAllSelections = function() {
+      selectedUserIds.clear();
+      const checkboxes = document.querySelectorAll('.cb-user-select, #selectAllPending, #selectAllApproved, #selectAllAll');
+      checkboxes.forEach(cb => cb.checked = false);
+      updateBulkBarState();
+    };
+
+    function updateBulkBarState() {
+      const bar = document.getElementById('bulkActionBar');
+      const countEl = document.getElementById('bulkSelectedCount');
+      const count = selectedUserIds.size;
+      if (countEl) countEl.textContent = count;
+      if (bar) bar.style.display = count > 0 ? 'flex' : 'none';
+    }
+
+    // Single Edit User Access
+    window.openEditAccessModal = function(userId) {
+      const users = getUsers();
+      const u = users.find(x => x.id === userId);
+      if (!u) return;
+
+      document.getElementById('editUserId').value = u.id;
+      document.getElementById('editUserPhone').value = u.phone || '';
+      document.getElementById('editClientNameDisplay').textContent = u.name || 'Unnamed Client';
+      document.getElementById('editClientPhoneDisplay').textContent = u.phone || '--';
+      document.getElementById('editClientTjDisplay').textContent = u.tradejiniClientId || '--';
+      document.getElementById('editAccessStatus').value = u.status || 'APPROVED';
+
+      const dateInput = document.getElementById('editAccessExpiryDate');
+      if (u.expiresAt) {
+        const d = new Date(Number(u.expiresAt));
+        dateInput.value = d.toISOString().split('T')[0];
+        updateExpirySummaryHint(d);
+      } else {
+        dateInput.value = '';
+        document.getElementById('editExpirySummaryHint').textContent = '♾️ Lifetime access (no expiration date set)';
+      }
+
+      document.getElementById('modalEditUserAccess').style.display = 'flex';
+    };
+
+    window.closeEditAccessModal = function() {
+      document.getElementById('modalEditUserAccess').style.display = 'none';
+    };
+
+    window.handleSingleDateChange = function() {
+      const dateVal = document.getElementById('editAccessExpiryDate').value;
+      if (!dateVal) {
+        document.getElementById('editExpirySummaryHint').textContent = '♾️ Lifetime access (no expiration date set)';
+        return;
+      }
+      const d = new Date(dateVal + 'T23:59:59');
+      updateExpirySummaryHint(d);
+    };
+
+    window.setExpiryPreset = function(days) {
+      const dateInput = document.getElementById('editAccessExpiryDate');
+      if (days === 0) {
+        dateInput.value = '';
+        document.getElementById('editExpirySummaryHint').textContent = '♾️ Lifetime access (no expiration date set)';
+        return;
+      }
+      const d = new Date();
+      d.setDate(d.getDate() + days);
+      dateInput.value = d.toISOString().split('T')[0];
+      updateExpirySummaryHint(d);
+    };
+
+    function updateExpirySummaryHint(d) {
+      const dateStr = d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+      const diff = Math.ceil((d.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+      document.getElementById('editExpirySummaryHint').textContent = `Expires on ${dateStr} (${diff} days from now)`;
+    }
+
+    window.submitEditUserAccess = async function() {
+      const userId = document.getElementById('editUserId').value;
+      const phone = document.getElementById('editUserPhone').value;
+      const status = document.getElementById('editAccessStatus').value;
+      const dateVal = document.getElementById('editAccessExpiryDate').value;
+
+      const btn = document.getElementById('btnSaveUserAccess');
+      if (btn) { btn.disabled = true; btn.textContent = 'Saving...'; }
+
+      let expiresAt = null;
+      let expiryDate = 'Lifetime';
+      if (dateVal) {
+        const targetDate = new Date(dateVal + 'T23:59:59');
+        expiresAt = targetDate.getTime();
+        expiryDate = targetDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+      }
+
+      try {
+        const res = await fetch('./api/admin/update-user-access', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            adminPin: ADMIN_PIN,
+            userId,
+            phone,
+            status,
+            expiresAt,
+            expiryDate
+          })
+        });
+        const data = await res.json();
+        if (data && data.s === 'ok') {
+          const users = getUsers();
+          const target = users.find(u => u.id === userId);
+          if (target) {
+            target.status = status;
+            target.expiresAt = expiresAt;
+            target.expiryDate = expiryDate;
+            saveUsers(users);
+          }
+          closeEditAccessModal();
+          renderActiveTab();
+          showAdminToast(`Updated access & validity for ${target ? target.name : 'user'}!`, 'success');
+        } else {
+          alert('Error updating user access: ' + (data.message || 'Unknown'));
+        }
+      } catch (err) {
+        alert('Network error: ' + err.message);
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = 'Save Access Changes'; }
+      }
+    };
+
+    // Bulk Edit User Access
+    window.openBulkEditModal = function() {
+      if (selectedUserIds.size === 0) {
+        showAdminToast('Please select at least 1 client first', 'error');
+        return;
+      }
+      document.getElementById('bulkTargetCount').textContent = selectedUserIds.size;
+      document.getElementById('bulkAccessStatus').value = 'NO_CHANGE';
+      document.getElementById('bulkExpiryMode').value = 'NO_CHANGE';
+      document.getElementById('bulkCustomDateField').style.display = 'none';
+      document.getElementById('modalBulkEditAccess').style.display = 'flex';
+    };
+
+    window.closeBulkEditModal = function() {
+      document.getElementById('modalBulkEditAccess').style.display = 'none';
+    };
+
+    window.handleBulkExpiryModeChange = function() {
+      const mode = document.getElementById('bulkExpiryMode').value;
+      const customField = document.getElementById('bulkCustomDateField');
+      customField.style.display = (mode === 'CUSTOM_DATE') ? 'block' : 'none';
+    };
+
+    window.submitBulkUserAccess = async function() {
+      const userIds = Array.from(selectedUserIds);
+      if (userIds.length === 0) return;
+
+      const statusVal = document.getElementById('bulkAccessStatus').value;
+      const expiryMode = document.getElementById('bulkExpiryMode').value;
+
+      let status = statusVal !== 'NO_CHANGE' ? statusVal : undefined;
+      let expiresAt = undefined;
+      let expiryDate = undefined;
+
+      if (expiryMode === 'LIFETIME') {
+        expiresAt = null;
+        expiryDate = 'Lifetime';
+      } else if (expiryMode === 'CUSTOM_DATE') {
+        const dateVal = document.getElementById('bulkAccessExpiryDate').value;
+        if (!dateVal) {
+          alert('Please select a specific expiry date');
+          return;
+        }
+        const targetDate = new Date(dateVal + 'T23:59:59');
+        expiresAt = targetDate.getTime();
+        expiryDate = targetDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+      } else if (expiryMode.startsWith('DAYS_')) {
+        const days = parseInt(expiryMode.replace('DAYS_', ''), 10);
+        const targetDate = new Date();
+        targetDate.setDate(targetDate.getDate() + days);
+        targetDate.setHours(23, 59, 59, 999);
+        expiresAt = targetDate.getTime();
+        expiryDate = targetDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+      }
+
+      const btn = document.getElementById('btnSubmitBulkAccess');
+      if (btn) { btn.disabled = true; btn.textContent = 'Applying...'; }
+
+      try {
+        const payload = {
+          adminPin: ADMIN_PIN,
+          userIds
+        };
+        if (status) payload.status = status;
+        if (expiresAt !== undefined) {
+          payload.expiresAt = expiresAt;
+          payload.expiryDate = expiryDate;
+        }
+
+        const res = await fetch('./api/admin/bulk-update-users', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (data && data.s === 'ok') {
+          const users = getUsers();
+          users.forEach(u => {
+            if (userIds.includes(u.id)) {
+              if (status) u.status = status;
+              if (expiresAt !== undefined) {
+                u.expiresAt = expiresAt;
+                u.expiryDate = expiryDate;
+              }
+            }
+          });
+          saveUsers(users);
+          closeBulkEditModal();
+          clearAllSelections();
+          renderActiveTab();
+          showAdminToast(`🎉 Successfully updated ${userIds.length} clients in bulk!`, 'success');
+        } else {
+          alert('Bulk update error: ' + (data.message || 'Unknown'));
+        }
+      } catch (err) {
+        alert('Network error: ' + err.message);
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = 'Apply to Selected Clients'; }
+      }
+    };
+
+    window.quickBulkApprove = async function() {
+      const userIds = Array.from(selectedUserIds);
+      if (userIds.length === 0) return;
+      if (!confirm(`Approve access for all ${userIds.length} selected clients?`)) return;
+
+      try {
+        const res = await fetch('./api/admin/bulk-update-users', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            adminPin: ADMIN_PIN,
+            userIds,
+            status: 'APPROVED'
+          })
+        });
+        const data = await res.json();
+        if (data && data.s === 'ok') {
+          const users = getUsers();
+          users.forEach(u => {
+            if (userIds.includes(u.id)) u.status = 'APPROVED';
+          });
+          saveUsers(users);
+          clearAllSelections();
+          switchAdminTab('approved');
+          showAdminToast(`Approved ${userIds.length} clients!`, 'success');
+        }
+      } catch (e) {
+        alert('Error approving users');
+      }
+    };
+
+    window.quickBulkRevoke = async function() {
+      const userIds = Array.from(selectedUserIds);
+      if (userIds.length === 0) return;
+      if (!confirm(`Revoke access for all ${userIds.length} selected clients and move to Pending?`)) return;
+
+      try {
+        const res = await fetch('./api/admin/bulk-update-users', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            adminPin: ADMIN_PIN,
+            userIds,
+            status: 'PENDING'
+          })
+        });
+        const data = await res.json();
+        if (data && data.s === 'ok') {
+          const users = getUsers();
+          users.forEach(u => {
+            if (userIds.includes(u.id)) u.status = 'PENDING';
+          });
+          saveUsers(users);
+          clearAllSelections();
+          switchAdminTab('pending');
+          showAdminToast(`Revoked ${userIds.length} clients access!`, 'success');
+        }
+      } catch (e) {
+        alert('Error revoking users');
+      }
+    };
 
     async function broadcastCloudEvent(payload) {
       try {
@@ -1078,7 +1859,7 @@
       const tbPending = document.getElementById('tablePendingBody');
       if (tbPending) {
         if (pendingUsers.length === 0) {
-          tbPending.innerHTML = `<tr><td colspan="6" style="text-align:center; color:#94a3b8; padding:32px 20px;">
+          tbPending.innerHTML = `<tr><td colspan="7" style="text-align:center; color:#94a3b8; padding:32px 20px;">
             <div style="font-size:24px; margin-bottom:8px;">🎉</div>
             <div style="font-weight:700; color:#334155; font-size:14px;">No Pending Admission Requests!</div>
             <div style="font-size:12px; color:#64748b; margin-top:4px;">All registered clients have been verified and approved.</div>
@@ -1086,8 +1867,10 @@
         } else {
           tbPending.innerHTML = pendingUsers.map(u => {
             const isHighlighted = (lastHighlightedUserId && u.id === lastHighlightedUserId);
+            const isSelected = selectedUserIds.has(u.id);
             return `
               <tr id="user-row-${u.id}" class="${isHighlighted ? 'highlight-row' : ''}">
+                <td style="text-align:center;"><input type="checkbox" class="cb-user-select" data-user-id="${u.id}" ${isSelected ? 'checked' : ''} onchange="toggleUserSelection('${u.id}', this.checked)"></td>
                 <td><strong>${u.name}</strong><br><small style="color:#64748b;">${u.email || ''}</small></td>
                 <td><code style="font-family:'JetBrains Mono'; color:#2563eb; font-weight:700;">${u.phone}</code></td>
                 <td><span style="background:#eff6ff; color:#1d4ed8; padding:3px 9px; border-radius:5px; font-weight:800; font-family:'JetBrains Mono';">${u.tradejiniClientId || '--'}</span></td>
@@ -1095,7 +1878,8 @@
                 <td><span class="badge-status badge-pending">🟡 PENDING</span></td>
                 <td style="text-align:right;">
                   <button class="btn-approve" onclick="approveUser('${u.id}', '${u.phone}', this)">✅ Approve Access</button>
-                  <button class="btn-reject" style="margin-left:6px;" onclick="rejectUser('${u.id}', '${u.phone}')">❌ Reject</button>
+                  <button class="btn-access" style="margin-left:4px;" onclick="openEditAccessModal('${u.id}')">✏️ Access</button>
+                  <button class="btn-reject" style="margin-left:4px;" onclick="rejectUser('${u.id}', '${u.phone}')">❌ Reject</button>
                 </td>
               </tr>
             `;
@@ -1117,24 +1901,28 @@
         }
 
         if (listApproved.length === 0) {
-          tbApproved.innerHTML = `<tr><td colspan="6" style="text-align:center; color:#94a3b8; padding:32px 20px;">
+          tbApproved.innerHTML = `<tr><td colspan="8" style="text-align:center; color:#94a3b8; padding:32px 20px;">
             <div style="font-size:24px; margin-bottom:8px;">👥</div>
             <div style="font-weight:700; color:#334155; font-size:14px;">No approved clients found.</div>
           </td></tr>`;
         } else {
           tbApproved.innerHTML = listApproved.map(u => {
             const isHighlighted = (lastHighlightedUserId && u.id === lastHighlightedUserId);
+            const isSelected = selectedUserIds.has(u.id);
             return `
               <tr id="user-row-${u.id}" class="${isHighlighted ? 'highlight-row' : ''}">
+                <td style="text-align:center;"><input type="checkbox" class="cb-user-select" data-user-id="${u.id}" ${isSelected ? 'checked' : ''} onchange="toggleUserSelection('${u.id}', this.checked)"></td>
                 <td><strong>${u.name}</strong><br><small style="color:#64748b;">${u.email || ''}</small></td>
                 <td><code style="font-family:'JetBrains Mono'; color:#0f172a; font-weight:700;">${u.phone}</code></td>
                 <td><span style="background:#ecfdf5; color:#047857; padding:3px 9px; border-radius:5px; font-weight:800; font-family:'JetBrains Mono'; border:1px solid #a7f3d0;">${u.tradejiniClientId || '--'}</span></td>
+                <td>${formatExpiryBadge(u)}</td>
                 <td style="color:#64748b;">${u.date || '--'}</td>
                 <td><span class="badge-status badge-approved">✅ APPROVED</span></td>
                 <td style="text-align:right;">
-                  <button class="btn-vip-key" onclick="copyVipKey('${u.vipKey}', '${u.name}')" title="Copy VIP Access Key">🔑 VIP Key</button>
-                  <button class="btn-revoke" style="margin-left:6px;" onclick="revokeUser('${u.id}', '${u.phone}', this)" title="Revoke access and move to pending">↩️ Revoke</button>
-                  ${u.role !== 'ADMIN' ? `<button style="background:none; border:none; color:#ef4444; cursor:pointer; font-size:14px; margin-left:8px;" onclick="deleteUser('${u.id}', '${u.phone}')" title="Delete User">🗑️</button>` : ''}
+                  <button class="btn-access" onclick="openEditAccessModal('${u.id}')" title="Edit client validity and access permissions">✏️ Access</button>
+                  <button class="btn-vip-key" style="margin-left:4px;" onclick="copyVipKey('${u.vipKey}', '${u.name}')" title="Copy VIP Access Key">🔑 VIP Key</button>
+                  <button class="btn-revoke" style="margin-left:4px;" onclick="revokeUser('${u.id}', '${u.phone}', this)" title="Revoke access and move to pending">↩️ Revoke</button>
+                  ${u.role !== 'ADMIN' ? `<button style="background:none; border:none; color:#ef4444; cursor:pointer; font-size:14px; margin-left:6px;" onclick="deleteUser('${u.id}', '${u.phone}')" title="Delete User">🗑️</button>` : ''}
                 </td>
               </tr>
             `;
@@ -1158,20 +1946,25 @@
         tbAll.innerHTML = filtered.map(u => {
           let badge = `<span class="badge-status badge-pending">🟡 PENDING</span>`;
           if (u.status === "APPROVED") badge = `<span class="badge-status badge-approved">✅ APPROVED</span>`;
+          if (u.status === "EXPIRED") badge = `<span class="badge-status badge-expired">🔴 EXPIRED</span>`;
           if (u.status === "REJECTED") badge = `<span class="badge-status badge-rejected">❌ REJECTED</span>`;
 
           const isHighlighted = (lastHighlightedUserId && u.id === lastHighlightedUserId);
+          const isSelected = selectedUserIds.has(u.id);
           return `
             <tr id="user-row-${u.id}" class="${isHighlighted ? 'highlight-row' : ''}">
+              <td style="text-align:center;"><input type="checkbox" class="cb-user-select" data-user-id="${u.id}" ${isSelected ? 'checked' : ''} onchange="toggleUserSelection('${u.id}', this.checked)"></td>
               <td><strong>${u.name}</strong><br><small style="color:#64748b;">${u.email || ''}</small></td>
               <td><code style="font-family:'JetBrains Mono';">${u.phone}</code></td>
               <td><span style="background:#eff6ff; color:#1d4ed8; padding:2px 7px; border-radius:4px; font-weight:800; font-family:'JetBrains Mono'; font-size:11px;">${u.tradejiniClientId || '--'}</span></td>
               <td><span style="font-size:11px; font-weight:700; color:#64748b;">${u.role || 'USER'}</span></td>
+              <td>${formatExpiryBadge(u)}</td>
               <td style="color:#64748b;">${u.date || '--'}</td>
               <td>${badge}</td>
               <td style="text-align:right;">
-                ${u.status !== 'APPROVED' ? `<button class="btn-approve" style="padding:4px 8px; font-size:11px;" onclick="approveUser('${u.id}', '${u.phone}', this)">✅ Approve</button>` : ''}
-                ${u.status === 'APPROVED' ? `<button class="btn-revoke" style="padding:4px 8px; font-size:11px;" onclick="revokeUser('${u.id}', '${u.phone}', this)">↩️ Revoke</button>` : ''}
+                <button class="btn-access" onclick="openEditAccessModal('${u.id}')" title="Edit client validity and access permissions">✏️ Access</button>
+                ${u.status !== 'APPROVED' ? `<button class="btn-approve" style="padding:4px 8px; font-size:11px; margin-left:4px;" onclick="approveUser('${u.id}', '${u.phone}', this)">✅ Approve</button>` : ''}
+                ${u.status === 'APPROVED' ? `<button class="btn-revoke" style="padding:4px 8px; font-size:11px; margin-left:4px;" onclick="revokeUser('${u.id}', '${u.phone}', this)">↩️ Revoke</button>` : ''}
                 ${u.status !== 'REJECTED' && u.status !== 'APPROVED' ? `<button class="btn-reject" style="padding:4px 8px; font-size:11px; margin-left:4px;" onclick="rejectUser('${u.id}', '${u.phone}')">Reject</button>` : ''}
                 ${u.role !== 'ADMIN' ? `<button style="background:none; border:none; color:#ef4444; cursor:pointer; font-size:12px; margin-left:6px;" onclick="deleteUser('${u.id}', '${u.phone}')" title="Delete">🗑️</button>` : ''}
               </td>
@@ -1218,7 +2011,7 @@
     // CSV Export
     document.getElementById('btnExportUsersCsv')?.addEventListener('click', () => {
       const users = getUsers();
-      const csv = "Name,Mobile,Tradejini_ID,Role,Status,Registration_Date\n" + users.map(u => `"${u.name}","${u.phone}","${u.tradejiniClientId || ''}","${u.role || 'USER'}","${u.status}","${u.date || ''}"`).join("\n");
+      const csv = "Name,Mobile,Tradejini_ID,Role,Status,Validity_Expiry,Expires_Timestamp,Registration_Date\n" + users.map(u => `"${u.name || ''}","${u.phone || ''}","${u.tradejiniClientId || ''}","${u.role || 'USER'}","${u.status || ''}","${u.expiryDate || 'Lifetime'}","${u.expiresAt || ''}","${u.date || ''}"`).join("\n");
       const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");

@@ -1100,10 +1100,24 @@ function switchView(viewName) {
     btn.classList.toggle('active', btn.getAttribute('data-view') === viewName);
   });
 
+  // Sync mobile bottom navigation bar active state
+  const mobileNavItems = document.querySelectorAll('.mobile-nav-item[data-view]');
+  mobileNavItems.forEach(btn => {
+    btn.classList.toggle('active', btn.getAttribute('data-view') === viewName);
+  });
+
   const views = document.querySelectorAll('.app-view');
   views.forEach(v => {
     v.classList.toggle('active', v.id === `view-${viewName}`);
   });
+
+  // On mobile, close off-canvas drawer
+  if (window.innerWidth <= 768) {
+    const sb = document.getElementById('watchlist-sidebar');
+    const bd = document.getElementById('watchlistBackdrop');
+    if (sb) sb.classList.remove('mobile-open');
+    if (bd) bd.classList.remove('active');
+  }
 
   // Ensure scroll is at top when switching views
   window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
@@ -2846,6 +2860,14 @@ function selectStock(symbol) {
 
   // Load Real Candles with Full Day Guarantee
   loadCandlesForActiveAsset();
+
+  // On mobile, auto-close the sliding drawer when a stock is selected
+  if (window.innerWidth <= 768) {
+    const sb = document.getElementById('watchlist-sidebar');
+    const bd = document.getElementById('watchlistBackdrop');
+    if (sb) sb.classList.remove('mobile-open');
+    if (bd) bd.classList.remove('active');
+  }
 }
 window.selectStock = selectStock;
 
@@ -3328,17 +3350,57 @@ function initApplication() {
     });
   });
 
-  // 8. Watchlist Sidebar Toggle
+  // 8. Watchlist Sidebar & Mobile Drawer Toggle
   const toggleWlBtn = document.getElementById('toggle-sidebar-btn');
+  const mobileWlBtn = document.getElementById('mobileBtnWatchlistToggle');
+  const backdrop = document.getElementById('watchlistBackdrop');
   const sidebar = document.getElementById('watchlist-sidebar');
+
+  function toggleMobileWatchlist() {
+    if (!sidebar) return;
+    const isOpening = !sidebar.classList.contains('mobile-open');
+    sidebar.classList.toggle('mobile-open', isOpening);
+    if (backdrop) backdrop.classList.toggle('active', isOpening);
+  }
+
   if (toggleWlBtn && sidebar) {
     toggleWlBtn.addEventListener('click', () => {
-      sidebar.classList.toggle('hidden');
-      setTimeout(() => {
-        if (AppState.chart) AppState.chart.resize();
-      }, 300);
+      if (window.innerWidth <= 768) {
+        toggleMobileWatchlist();
+      } else {
+        sidebar.classList.toggle('hidden');
+        setTimeout(() => {
+          if (AppState.chart) AppState.chart.resize();
+        }, 300);
+      }
     });
   }
+
+  if (mobileWlBtn && sidebar) {
+    mobileWlBtn.addEventListener('click', () => {
+      const chartView = document.getElementById('view-chart');
+      if (chartView && !chartView.classList.contains('active')) {
+        switchView('chart');
+      }
+      toggleMobileWatchlist();
+    });
+  }
+
+  if (backdrop && sidebar) {
+    backdrop.addEventListener('click', () => {
+      sidebar.classList.remove('mobile-open');
+      backdrop.classList.remove('active');
+    });
+  }
+
+  // 8B. Mobile Bottom Navigation Tabs
+  const mobileNavItems = document.querySelectorAll('.mobile-nav-item[data-view]');
+  mobileNavItems.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const view = btn.getAttribute('data-view');
+      switchView(view);
+    });
+  });
 
   // 9. Fullscreen Button
   const btnFs = document.getElementById('btn-fullscreen');
