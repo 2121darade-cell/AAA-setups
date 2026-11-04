@@ -702,13 +702,12 @@ body {
 /* Chart Header Bar */
 .chart-header-bar {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 14px;
+  flex-direction: column;
+  align-items: stretch;
+  padding: 8px 14px 6px 14px;
   background: #ffffff;
   border-bottom: 1px solid var(--border-subtle);
-  gap: 12px;
-  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .chart-symbol-info {
@@ -716,6 +715,7 @@ body {
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+  width: 100%;
 }
 
 .symbol-badge {
@@ -800,14 +800,31 @@ body {
   border-color: #fde68a;
 }
 
-/* Timeframes & Indicators Groups */
-.timeframe-group, .chart-type-group {
+/* Chart Header Controls Toolbar */
+.chart-header-controls-row {
   display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  overflow-x: auto;
+  white-space: nowrap;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.chart-header-controls-row::-webkit-scrollbar {
+  display: none;
+}
+
+/* Timeframes & Chart Type Groups */
+.timeframe-group, .chart-type-group {
+  display: inline-flex;
   align-items: center;
   background: #f1f5f9;
   border-radius: 6px;
   padding: 2px;
   gap: 2px;
+  flex-shrink: 0;
 }
 
 .tf-btn, .chart-type-btn {
@@ -816,10 +833,16 @@ body {
   color: var(--text-secondary);
   font-size: 11px;
   font-weight: 700;
-  padding: 4px 8px;
+  padding: 0 8px;
+  height: 26px;
+  line-height: 26px;
   border-radius: 4px;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   transition: all 0.15s ease;
+  white-space: nowrap;
 }
 
 .tf-btn:hover, .chart-type-btn:hover {
@@ -833,25 +856,40 @@ body {
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
 }
 
+.indicators-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  flex-wrap: nowrap;
+}
+
 .indicator-toggle-btn {
-  background: #f1f5f9;
+  background: #f8fafc;
   border: 1px solid var(--border-subtle);
   color: var(--text-secondary);
   font-size: 11px;
   font-weight: 700;
-  padding: 4px 8px;
+  padding: 0 8px;
+  height: 26px;
+  line-height: 24px;
   border-radius: 5px;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   transition: all 0.15s ease;
+  white-space: nowrap;
 }
 
 .indicator-toggle-btn:hover {
-  background: #e2e8f0;
+  background: #f1f5f9;
+  color: var(--text-primary);
 }
 
 .indicator-toggle-btn.active {
   background: #eff6ff;
-  border-color: #3b82f6;
+  border-color: #93c5fd;
   color: #1d4ed8;
 }
 
@@ -2031,6 +2069,10 @@ body {
   padding: 2px 4px;
   border-radius: 6px;
   border: 1px solid #e2e8f0;
+  margin-left: auto;
+  flex-shrink: 0;
+  height: 28px;
+  box-sizing: border-box;
 }
 
 .chart-ctrl-btn {
@@ -2039,7 +2081,9 @@ body {
   color: #334155;
   font-size: 11px;
   font-weight: 700;
-  padding: 3px 8px;
+  padding: 0 6px;
+  height: 22px;
+  min-width: 22px;
   border-radius: 4px;
   cursor: pointer;
   display: inline-flex;
