@@ -24,6 +24,32 @@ const TradeSetupModule = (function () {
   };
 
   let audioCtx = null;
+  let isInitialized = false;
+
+  function loadAudioPreference() {
+    try {
+      const saved = localStorage.getItem('fin_ts_audio_enabled');
+      if (saved !== null) {
+        state.audioEnabled = (saved === '1');
+      }
+    } catch (e) {}
+  }
+
+  function updateAudioButtonUI() {
+    const btnAudio = document.getElementById('tsBtnAudioToggle');
+    if (!btnAudio) return;
+    btnAudio.classList.toggle('active', state.audioEnabled);
+    btnAudio.classList.toggle('muted', !state.audioEnabled);
+    const txt = btnAudio.querySelector('.ts-audio-text');
+    if (txt) {
+      const isEn = window.I18N && window.I18N.getLang() === 'en';
+      const key = state.audioEnabled ? 'ts_audio_on' : 'ts_audio_off';
+      txt.setAttribute('data-i18n', key);
+      txt.textContent = state.audioEnabled 
+        ? (isEn ? '🔊 Audio ON' : '🔊 ध्वनी चालू') 
+        : (isEn ? '🔇 Audio OFF' : '🔇 ध्वनी बंद');
+    }
+  }
 
   function getAudioContext() {
     if (!audioCtx) {
@@ -755,8 +781,14 @@ const TradeSetupModule = (function () {
   }
 
   function init() {
+    loadAudioPreference();
+    updateAudioButtonUI();
     loadAvailableDates();
     scanStrategy();
+
+    // Guard against duplicate listener binding and duplicate interval timers on view switch
+    if (isInitialized) return;
+    isInitialized = true;
 
     // Event listeners
     const dateSelect = document.getElementById('tsDateSelect');
@@ -789,13 +821,22 @@ const TradeSetupModule = (function () {
 
     const btnAudio = document.getElementById('tsBtnAudioToggle');
     if (btnAudio) {
-      btnAudio.addEventListener('click', () => {
+      btnAudio.addEventListener('click', (e) => {
+        e.preventDefault();
         state.audioEnabled = !state.audioEnabled;
-        btnAudio.classList.toggle('active', state.audioEnabled);
+        try {
+          localStorage.setItem('fin_ts_audio_enabled', state.audioEnabled ? '1' : '0');
+        } catch (err) {}
+        updateAudioButtonUI();
         const isEn = window.I18N && window.I18N.getLang() === 'en';
-        btnAudio.querySelector('.ts-audio-text').textContent = state.audioEnabled 
-          ? (isEn ? 'Audio ON' : 'ध्वनी चालू') 
-          : (isEn ? 'Audio OFF' : 'ध्वनी बंद');
+        if (typeof showToastNotification === 'function') {
+          showToastNotification(
+            state.audioEnabled 
+              ? (isEn ? 'Sound alerts enabled' : 'ध्वनी सूचना चालू केल्या') 
+              : (isEn ? 'Sound alerts muted' : 'ध्वनी सूचना म्यूट केल्या'),
+            'info'
+          );
+        }
         if (state.audioEnabled) playAlertSound('BUY');
       });
     }
@@ -840,8 +881,9 @@ const TradeSetupModule = (function () {
       });
     });
 
-    // Auto-refresh timer
-    setInterval(() => {
+    // Auto-refresh timer (cleanly cleared and tracked)
+    if (state.timerId) clearInterval(state.timerId);
+    state.timerId = setInterval(() => {
       scanStrategy();
     }, 60000);
   }
@@ -859,15 +901,7 @@ const TradeSetupModule = (function () {
     if (btnScan) {
       btnScan.innerHTML = `<span>⚡</span><span>${isEn ? 'Scan Now' : 'आत्ता स्कॅन करा'}</span>`;
     }
-    const btnAudio = document.getElementById('tsBtnAudioToggle');
-    if (btnAudio) {
-      const txt = btnAudio.querySelector('.ts-audio-text');
-      if (txt) {
-        txt.textContent = state.audioEnabled 
-          ? (isEn ? 'Audio ON' : 'ध्वनी चालू') 
-          : (isEn ? 'Audio OFF' : 'ध्वनी बंद');
-      }
-    }
+    updateAudioButtonUI();
     const btnNotif = document.getElementById('tsBtnNotifToggle');
     if (btnNotif) {
       const txt = btnNotif.querySelector('.ts-notif-text');

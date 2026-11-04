@@ -1275,6 +1275,18 @@ body {
   color: #065f46;
 }
 
+.ts-btn-secondary.muted {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  color: #64748b;
+  opacity: 0.85;
+}
+.ts-btn-secondary.muted:hover {
+  background: #f1f5f9;
+  color: #334155;
+  opacity: 1;
+}
+
 .ts-date-picker-wrap {
   position: relative;
   display: inline-flex;
