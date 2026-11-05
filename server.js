@@ -2632,6 +2632,56 @@ async function syncAaaCalendarSessions() {
   }
 }
 
+function enrichAaaSignalsWithLiveQuotes(signals) {
+  if (!Array.isArray(signals)) return signals;
+  for (const s of signals) {
+    if (!s || !s.symbol) continue;
+    const cleanSym = s.symbol.toUpperCase().trim();
+    try {
+      dhan.dhanStream.subscribe(cleanSym);
+    } catch (e) {}
+
+    const q = liveQuotesMap.get(cleanSym) || dhan.dhanStream.latestQuotes.get(cleanSym);
+    if (q && q.price > 0) {
+      s.ltp = round2(q.price);
+      if (q.change != null) s.change = round2(q.change);
+      if (q.changePercent != null) s.changePercent = round2(q.changePercent);
+
+      // Dynamically re-evaluate target / stop loss status with current live market price
+      if (s.type === 'BUY') {
+        if (s.stopLoss && s.ltp <= s.stopLoss) {
+          s.status = 'SL_HIT';
+          s.statusText = 'Stop Loss Hit';
+        } else if (s.target2 && s.ltp >= s.target2) {
+          s.status = 'TARGET_2_HIT';
+          s.statusText = 'Target 2 Hit (1:2.5)';
+        } else if (s.target1 && s.ltp >= s.target1) {
+          s.status = 'TARGET_1_HIT';
+          s.statusText = 'Target 1 Hit (1:1.5)';
+        } else {
+          s.status = 'ACTIVE';
+          s.statusText = 'Active (Live)';
+        }
+      } else if (s.type === 'SELL') {
+        if (s.stopLoss && s.ltp >= s.stopLoss) {
+          s.status = 'SL_HIT';
+          s.statusText = 'Stop Loss Hit';
+        } else if (s.target2 && s.ltp <= s.target2) {
+          s.status = 'TARGET_2_HIT';
+          s.statusText = 'Target 2 Hit (1:2.5)';
+        } else if (s.target1 && s.ltp <= s.target1) {
+          s.status = 'TARGET_1_HIT';
+          s.statusText = 'Target 1 Hit (1:1.5)';
+        } else {
+          s.status = 'ACTIVE';
+          s.statusText = 'Active (Live)';
+        }
+      }
+    }
+  }
+  return signals;
+}
+
 async function getTradejiniAaaScreener(days = 1, minTrend = 3, requestedDate = null) {
   const todayStr = formatIst(Date.now()).fullDate;
   const cleanReqDate = requestedDate ? requestedDate.replace(/_/g, ' ').trim() : null;
@@ -2650,6 +2700,7 @@ async function getTradejiniAaaScreener(days = 1, minTrend = 3, requestedDate = n
     }
 
     const sigs = (sessionData && Array.isArray(sessionData.signals)) ? sessionData.signals : [];
+    enrichAaaSignalsWithLiveQuotes(sigs);
     sigs.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
 
     return {
@@ -2662,7 +2713,7 @@ async function getTradejiniAaaScreener(days = 1, minTrend = 3, requestedDate = n
       totalScanned: (sessionData && sessionData.totalScanned) || 189,
       warmedCount: (sessionData && sessionData.totalScanned) || 189,
       foundCount: sigs.length,
-      stats: sessionData && sessionData.stats ? sessionData.stats : {
+      stats: {
         total: sigs.length,
         buy: sigs.filter(s => s.type === 'BUY').length,
         sell: sigs.filter(s => s.type === 'SELL').length,
@@ -2725,6 +2776,7 @@ async function getTradejiniAaaScreener(days = 1, minTrend = 3, requestedDate = n
   }
 
   // Sort newest daily setups first
+  enrichAaaSignalsWithLiveQuotes(dedupedRows);
   dedupedRows.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
 
   const nowIst = formatIst(Date.now());
@@ -3785,6 +3837,18 @@ wss.on('connection', (ws, req) => {
   ws.on('message', async (message) => {
     try {
       const data = JSON.parse(message.toString());
+      if (data.type === 'subscribe_instruments' && Array.isArray(data.instruments)) {
+        for (const inst of data.instruments) {
+          if (inst && (inst.SecurityId || inst.securityId)) {
+            dhan.dhanStream.subscribe({
+              ExchangeSegment: inst.ExchangeSegment || inst.segment || 'NSE_FNO',
+              SecurityId: String(inst.SecurityId || inst.securityId),
+              Symbol: inst.Symbol || inst.symbol || String(inst.SecurityId || inst.securityId)
+            });
+          }
+        }
+      }
+
       if (data.type === 'subscribe') {
         const syms = Array.isArray(data.symbols) ? data.symbols : (data.symbol ? [data.symbol] : []);
         for (const s of syms) {

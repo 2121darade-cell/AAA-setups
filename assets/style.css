@@ -2626,3 +2626,13 @@ body {
 }
 
 
+
+/* Real-Time LTP Tick Flash Animation */
+@keyframes aaaPriceFlash {
+  0% { transform: scale(1.08); filter: brightness(1.3); }
+  100% { transform: scale(1); filter: brightness(1); }
+}
+.aaa-price-flash {
+  animation: aaaPriceFlash 0.35s ease-out;
+  display: inline-block;
+}

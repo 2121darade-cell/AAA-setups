@@ -1484,6 +1484,20 @@ function subscribeActiveSymbols() {
     if (item && item.symbol) syms.add(item.symbol);
   });
 
+  // Include active symbols from AAA Screener & Trade Setup
+  if (window.AAAScreenerModule && typeof window.AAAScreenerModule.getActiveSymbols === 'function') {
+    const aaaSyms = window.AAAScreenerModule.getActiveSymbols();
+    if (Array.isArray(aaaSyms)) {
+      aaaSyms.forEach(s => { if (s) syms.add(s); });
+    }
+  }
+  if (window.TradeSetupModule && typeof window.TradeSetupModule.getActiveSymbols === 'function') {
+    const tsSyms = window.TradeSetupModule.getActiveSymbols();
+    if (Array.isArray(tsSyms)) {
+      tsSyms.forEach(s => { if (s) syms.add(s); });
+    }
+  }
+
   AppState.wsClient.send(JSON.stringify({
     type: 'subscribe',
     symbols: Array.from(syms)
@@ -1536,6 +1550,24 @@ function handleIncomingLiveTick(tick) {
 
   // Throttled full watchlist update (max once per 1.2s to prevent UI thread lockup & dropped clicks)
   scheduleWatchlistRender();
+
+  // Dispatch live tick to AAA Screener Module
+  if (window.AAAScreenerModule && typeof window.AAAScreenerModule.onTick === 'function') {
+    try {
+      window.AAAScreenerModule.onTick(tick);
+    } catch (e) {
+      console.warn('[AAA Screener] onTick dispatch exception:', e);
+    }
+  }
+
+  // Dispatch live tick to Trade Setup Module
+  if (window.TradeSetupModule && typeof window.TradeSetupModule.onTick === 'function') {
+    try {
+      window.TradeSetupModule.onTick(tick);
+    } catch (e) {
+      console.warn('[Trade Setup] onTick dispatch exception:', e);
+    }
+  }
 
   // 2. Active Chart Asset Live Tick Update
   const currSym = (AppState.currentAsset && AppState.currentAsset.symbol ? AppState.currentAsset.symbol : '').toUpperCase().trim();
@@ -1594,7 +1626,8 @@ function handleIncomingLiveTick(tick) {
         const todayFullDate = formatIst(Date.now()).fullDate;
         if (lastCandle.fullDate !== todayFullDate) {
           const ist = formatIst(Date.now());
-          const todayStartMs = new Date(ist.fullDate).getTime() || Date.now();
+          const minAllowedMs = (lastCandle && lastCandle.timestamp) ? (lastCandle.timestamp + 86400000) : Date.now();
+          const todayStartMs = Math.max(Date.now(), minAllowedMs);
           targetCandle = {
             timestamp: todayStartMs,
             open: tick.price,
@@ -1621,43 +1654,47 @@ function handleIncomingLiveTick(tick) {
       }
 
       // Real-Time Sub-Second update on TradingView Series (shifted by IST_OFFSET_SEC)
-      const tsSec = Math.floor(Number(targetCandle.timestamp) / 1000) + IST_OFFSET_SEC;
-      if (AppState.chartType === 'line' && AppState.tvAreaSeries) {
-        AppState.tvAreaSeries.update({ time: tsSec, value: targetCandle.close });
-      } else if (AppState.tvCandleSeries) {
-        let o = targetCandle.open, h = targetCandle.high, l = targetCandle.low, cl = targetCandle.close;
-        if (AppState.chartType === 'heikinashi' && AppState.liveCandles.length >= 2) {
-          const prevCandle = AppState.liveCandles[AppState.liveCandles.length - 2];
-          const prevHaOpen = prevCandle.haOpen != null ? prevCandle.haOpen : (prevCandle.open + prevCandle.close) / 2;
-          const prevHaClose = prevCandle.haClose != null ? prevCandle.haClose : (prevCandle.open + prevCandle.high + prevCandle.low + prevCandle.close) / 4;
-          const haClose = (o + h + l + cl) / 4;
-          const haOpen = (prevHaOpen + prevHaClose) / 2;
-          const haHigh = Math.max(h, haOpen, haClose);
-          const haLow = Math.min(l, haOpen, haClose);
-          targetCandle.haOpen = Number(haOpen.toFixed(2));
-          targetCandle.haHigh = Number(haHigh.toFixed(2));
-          targetCandle.haLow = Number(haLow.toFixed(2));
-          targetCandle.haClose = Number(haClose.toFixed(2));
-          o = targetCandle.haOpen;
-          h = targetCandle.haHigh;
-          l = targetCandle.haLow;
-          cl = targetCandle.haClose;
+      try {
+        const tsSec = Math.floor(Number(targetCandle.timestamp) / 1000) + IST_OFFSET_SEC;
+        if (AppState.chartType === 'line' && AppState.tvAreaSeries) {
+          AppState.tvAreaSeries.update({ time: tsSec, value: targetCandle.close });
+        } else if (AppState.tvCandleSeries) {
+          let o = targetCandle.open, h = targetCandle.high, l = targetCandle.low, cl = targetCandle.close;
+          if (AppState.chartType === 'heikinashi' && AppState.liveCandles.length >= 2) {
+            const prevCandle = AppState.liveCandles[AppState.liveCandles.length - 2];
+            const prevHaOpen = prevCandle.haOpen != null ? prevCandle.haOpen : (prevCandle.open + prevCandle.close) / 2;
+            const prevHaClose = prevCandle.haClose != null ? prevCandle.haClose : (prevCandle.open + prevCandle.high + prevCandle.low + prevCandle.close) / 4;
+            const haClose = (o + h + l + cl) / 4;
+            const haOpen = (prevHaOpen + prevHaClose) / 2;
+            const haHigh = Math.max(h, haOpen, haClose);
+            const haLow = Math.min(l, haOpen, haClose);
+            targetCandle.haOpen = Number(haOpen.toFixed(2));
+            targetCandle.haHigh = Number(haHigh.toFixed(2));
+            targetCandle.haLow = Number(haLow.toFixed(2));
+            targetCandle.haClose = Number(haClose.toFixed(2));
+            o = targetCandle.haOpen;
+            h = targetCandle.haHigh;
+            l = targetCandle.haLow;
+            cl = targetCandle.haClose;
+          }
+          AppState.tvCandleSeries.update({
+            time: tsSec,
+            open: o,
+            high: h,
+            low: l,
+            close: cl
+          });
         }
-        AppState.tvCandleSeries.update({
-          time: tsSec,
-          open: o,
-          high: h,
-          low: l,
-          close: cl
-        });
-      }
 
-      if (AppState.tvVolumeSeries && targetCandle.volume) {
-        AppState.tvVolumeSeries.update({
-          time: tsSec,
-          value: targetCandle.volume,
-          color: targetCandle.close >= targetCandle.open ? 'rgba(8, 153, 129, 0.45)' : 'rgba(242, 54, 69, 0.45)'
-        });
+        if (AppState.tvVolumeSeries && targetCandle.volume) {
+          AppState.tvVolumeSeries.update({
+            time: tsSec,
+            value: targetCandle.volume,
+            color: targetCandle.close >= targetCandle.open ? 'rgba(8, 153, 129, 0.45)' : 'rgba(242, 54, 69, 0.45)'
+          });
+        }
+      } catch (err) {
+        console.warn('[TradingView] Bar update error:', err);
       }
 
       // Update OHLC display banner above chart

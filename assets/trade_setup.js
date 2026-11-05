@@ -376,6 +376,25 @@ const TradeSetupModule = (function () {
     return cc;
   }
 
+  function subscribeSignals(signals) {
+    if (!Array.isArray(signals) || signals.length === 0) return;
+    const syms = Array.from(new Set(signals.map(s => (s.Symbol || s.symbol || '').toUpperCase().trim()).filter(Boolean)));
+    if (syms.length === 0) return;
+
+    if (window.AppState && window.AppState.wsClient && window.AppState.wsClient.readyState === WebSocket.OPEN) {
+      try {
+        window.AppState.wsClient.send(JSON.stringify({ type: 'subscribe', symbols: syms }));
+      } catch (e) {}
+    }
+    syms.forEach(sym => {
+      fetch(`./api/tradejini/subscribe?symbol=${encodeURIComponent(sym)}`).catch(() => {});
+    });
+  }
+
+  function getActiveSymbols() {
+    return Array.from(new Set((state.signals || []).map(s => (s.Symbol || s.symbol || '').toUpperCase().trim()).filter(Boolean)));
+  }
+
   function filterAndRenderSignals() {
     let filtered = state.signals.slice();
     if (state.activeFilter === 'BUY') filtered = filtered.filter(s => s.Type === 'BUY');
@@ -475,7 +494,7 @@ const TradeSetupModule = (function () {
               <strong>${sig.ATM}</strong>
             </div>
             <div style="font-size:12px; font-weight:800; color:#0f172a; background:#ffffff; padding:3px 10px; border-radius:6px; border:1px solid #cbd5e1;">
-              ${tLtp} <span style="color:${isBuy ? '#059669' : '#dc2626'};">₹${sig.LTP != null ? sig.LTP : sig.Entry}</span>
+              ${tLtp} <span class="ts-ltp-${sig.Symbol}" style="color:${isBuy ? '#059669' : '#dc2626'};">₹${sig.LTP != null ? Number(sig.LTP).toFixed(2) : sig.Entry}</span>
             </div>
           </div>
 
@@ -540,6 +559,22 @@ const TradeSetupModule = (function () {
     if (modal) modal.classList.remove('active');
   }
 
+  function updateTsModalSubtitle(sig) {
+    const isEn = window.I18N && window.I18N.getLang() === 'en';
+    const curLtp = sig.LTP != null ? Number(sig.LTP).toFixed(2) : sig.Entry;
+    const isUp = (sig.Type === 'BUY' && Number(curLtp) >= sig.Entry) || (sig.Type === 'SELL' && Number(curLtp) <= sig.Entry);
+    const ltpCol = isUp ? '#059669' : '#dc2626';
+
+    const titleEl = document.getElementById('tsChartTitle');
+    if (titleEl) {
+      titleEl.textContent = `${sig.Symbol} - 5M Heikin Ashi + RSI(7) Setup (${sig.StatusText || 'Active'})`;
+    }
+    const subEl = document.getElementById('tsChartSubtitle');
+    if (subEl) {
+      subEl.innerHTML = `${sig.Type} | Time: ${sig.Time} | Entry: ₹${sig.Entry} | SL: ₹${sig.StopLoss} | Tgt 1: ₹${sig.Target1} | <strong style="color:${ltpCol}; font-size:12px;">Live LTP: ₹${curLtp}</strong>`;
+    }
+  }
+
   function viewChart(sym, sigId) {
     let sig = sigId ? state.signals.find(s => s.Id === sigId) : null;
     if (!sig) sig = state.signals.find(s => s.Symbol === sym);
@@ -553,8 +588,7 @@ const TradeSetupModule = (function () {
       const modal = document.getElementById('tsChartModal');
       if (!modal) return;
       const rsiInfo = sig.RSILabel || (sig.RSI != null ? sig.RSI : (sig.Type === 'BUY' ? '< 20' : '> 80'));
-      document.getElementById('tsChartTitle').textContent = `${sig.Symbol} - 5M Heikin Ashi + RSI(7) Setup (${sig.StatusText || 'Active'})`;
-      document.getElementById('tsChartSubtitle').textContent = `${sig.Type} | Time: ${sig.Time} | Entry (HA Close): ₹${sig.Entry} | SL (${sig.Type === 'BUY' ? 'HA Low' : 'HA High'}): ₹${sig.StopLoss} | Live LTP: ₹${sig.LTP || sig.Entry}`;
+      updateTsModalSubtitle(sig);
       modal.classList.add('active');
       setTimeout(() => drawHeikinAshiChart(sig), 80);
     };
@@ -608,6 +642,9 @@ const TradeSetupModule = (function () {
     });
     if (sig.Entry) { minP = Math.min(minP, sig.Entry); maxP = Math.max(maxP, sig.Entry); }
     if (sig.StopLoss) { minP = Math.min(minP, sig.StopLoss); maxP = Math.max(maxP, sig.StopLoss); }
+    if (sig.Target1) { minP = Math.min(minP, sig.Target1); maxP = Math.max(maxP, sig.Target1); }
+    if (sig.Target2) { minP = Math.min(minP, sig.Target2); maxP = Math.max(maxP, sig.Target2); }
+    if (sig.LTP && sig.LTP > 0) { minP = Math.min(minP, sig.LTP); maxP = Math.max(maxP, sig.LTP); }
     if (sig.Target1) { minP = Math.min(minP, sig.Target1); maxP = Math.max(maxP, sig.Target1); }
     if (sig.Target2) { minP = Math.min(minP, sig.Target2); maxP = Math.max(maxP, sig.Target2); }
 
@@ -913,6 +950,34 @@ const TradeSetupModule = (function () {
     }
   }
 
+  function onTick(tick) {
+    if (!tick || !tick.symbol || !tick.price) return;
+    const sym = tick.symbol.toUpperCase().trim();
+    const price = Number(tick.price);
+    if (!price || isNaN(price)) return;
+
+    if (Array.isArray(state.signals)) {
+      for (const sig of state.signals) {
+        if ((sig.Symbol || sig.symbol || '').toUpperCase().trim() === sym) {
+          sig.LTP = price;
+          // Update DOM badges
+          const ltpBadges = document.querySelectorAll(`.ts-ltp-${sym}`);
+          const isUp = (sig.Type === 'BUY' && price >= sig.Entry) || (sig.Type === 'SELL' && price <= sig.Entry);
+          ltpBadges.forEach(el => {
+            el.textContent = `₹${price.toFixed(2)}`;
+            el.style.color = isUp ? '#059669' : '#dc2626';
+          });
+        }
+      }
+    }
+
+    if (state.chartData && (state.chartData.Symbol || state.chartData.symbol || '').toUpperCase().trim() === sym) {
+      state.chartData.LTP = price;
+      updateTsModalSubtitle(state.chartData);
+      drawHeikinAshiChart(state.chartData);
+    }
+  }
+
   return {
     init,
     scanStrategy,
@@ -921,7 +986,9 @@ const TradeSetupModule = (function () {
     closeSignalModal,
     openInMainChart,
     openModalSignalInMainChart,
-    onLanguageChange
+    onLanguageChange,
+    onTick,
+    getActiveSymbols
   };
 })();
 

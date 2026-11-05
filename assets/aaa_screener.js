@@ -288,6 +288,7 @@ const AAAScreenerModule = (function () {
         if (tjData && tjData.s === 'ok' && Array.isArray(tjData.rows)) {
           allSignals = tjData.rows;
           renderTable();
+          subscribeSignals(allSignals);
 
           const elTot = document.getElementById('aaaStatTotalStocks');
           const elBuy = document.getElementById('aaaStatBuySignals');
@@ -335,6 +336,25 @@ const AAAScreenerModule = (function () {
       return 'background:#fef2f2; color:#b91c1c; border:1px solid #fca5a5;';
     }
     return 'background:#eff6ff; color:#1d4ed8; border:1px solid #93c5fd;';
+  }
+
+  function subscribeSignals(signals) {
+    if (!Array.isArray(signals) || signals.length === 0) return;
+    const syms = Array.from(new Set(signals.map(s => (s.symbol || '').toUpperCase().trim()).filter(Boolean)));
+    if (syms.length === 0) return;
+
+    if (window.AppState && window.AppState.wsClient && window.AppState.wsClient.readyState === WebSocket.OPEN) {
+      try {
+        window.AppState.wsClient.send(JSON.stringify({ type: 'subscribe', symbols: syms }));
+      } catch (e) {}
+    }
+    syms.forEach(sym => {
+      fetch(`./api/tradejini/subscribe?symbol=${encodeURIComponent(sym)}`).catch(() => {});
+    });
+  }
+
+  function getActiveSymbols() {
+    return Array.from(new Set((allSignals || []).map(s => (s.symbol || '').toUpperCase().trim()).filter(Boolean)));
   }
 
   function renderTable() {
@@ -394,11 +414,14 @@ const AAAScreenerModule = (function () {
       return `
         <tr>
           <td>
-            <div class="aaa-sym-title">${s.symbol} <span style="font-size:11px; color:${isBuy ? '#059669' : '#dc2626'}; font-weight:700;">(LTP: ₹${s.ltp || s.entry})</span></div>
+            <div class="aaa-sym-title">${s.symbol} <span class="aaa-ltp-badge aaa-ltp-${s.symbol}" id="aaa-ltp-${s.id}" style="font-size:11px; color:${isBuy ? '#059669' : '#dc2626'}; font-weight:700;">(LTP: ₹${s.ltp != null ? Number(s.ltp).toFixed(2) : s.entry})</span></div>
             <div class="aaa-sym-sub">${s.name} ${s.date ? '&bull; 📅 संदर्भ: <strong>' + s.date + '</strong>' : ''}</div>
           </td>
           <td>
-            ${typeBadge}
+            <div style="display:flex; flex-direction:column; gap:4px; align-items:flex-start;">
+              ${typeBadge}
+              <span class="aaa-status-badge aaa-status-${s.symbol}" id="aaa-status-${s.id}" style="font-size:10px; font-weight:700; padding:2px 6px; border-radius:4px; ${getStatusBadgeStyle(s.status)}">${s.statusText || s.status || 'ACTIVE'}</span>
+            </div>
           </td>
           <td>
             <span class="aaa-pattern-tag">${s.pattern}</span>
@@ -422,17 +445,32 @@ const AAAScreenerModule = (function () {
     }).join('');
   }
 
+  function updateModalSubtitle(s) {
+    const isEn = window.I18N && window.I18N.getLang() === 'en';
+    const entryLbl = isEn ? 'Entry' : 'एन्ट्री';
+    const ltpLbl = isEn ? 'Live LTP' : 'चालू भाव (LTP)';
+    const curLtp = s.ltp != null ? Number(s.ltp).toFixed(2) : s.entry;
+    const isUp = (s.type === 'BUY' && Number(curLtp) >= s.entry) || (s.type === 'SELL' && Number(curLtp) <= s.entry);
+    const ltpCol = isUp ? '#059669' : '#dc2626';
+
+    const titleEl = document.getElementById('aaaModalSymbol');
+    if (titleEl) {
+      titleEl.innerHTML = `${s.symbol} - ${s.pattern} (${s.type}) <span style="font-size:12px; margin-left:8px; padding:2px 8px; border-radius:4px; ${getStatusBadgeStyle(s.status)}">${s.statusText || s.status || 'ACTIVE'}</span>`;
+    }
+
+    const subEl = document.getElementById('aaaModalSubtitle');
+    if (subEl) {
+      subEl.innerHTML = `${entryLbl}: ₹${s.entry} | SL: ₹${s.stopLoss} | Tgt 1: ₹${s.target1} | Tgt 2: ₹${s.target2} | <strong style="color:${ltpCol}; font-size:12px;">${ltpLbl}: ₹${curLtp}</strong>`;
+    }
+  }
+
   function openChartModal(sigId) {
     const s = allSignals.find(x => x.id === sigId);
     if (!s) return;
     currentChartData = s;
     const modal = document.getElementById('aaaChartModal');
     if (!modal) return;
-    const isEn = window.I18N && window.I18N.getLang() === 'en';
-    const entryLbl = isEn ? 'Entry' : 'एन्ट्री';
-    const ltpLbl = isEn ? 'Live LTP' : 'चालू भाव (LTP)';
-    document.getElementById('aaaModalSymbol').textContent = `${s.symbol} - ${s.pattern} (${s.type})`;
-    document.getElementById('aaaModalSubtitle').textContent = `${entryLbl}: ₹${s.entry} | SL: ₹${s.stopLoss} | Tgt 1: ₹${s.target1} | Tgt 2: ₹${s.target2} | ${ltpLbl}: ₹${s.ltp || s.entry}`;
+    updateModalSubtitle(s);
     modal.classList.add('active');
     setTimeout(() => drawCandlestickModal(s), 50);
   }
@@ -471,6 +509,8 @@ const AAAScreenerModule = (function () {
     if (s.entry) { minP = Math.min(minP, s.entry); maxP = Math.max(maxP, s.entry); }
     if (s.stopLoss) { minP = Math.min(minP, s.stopLoss); maxP = Math.max(maxP, s.stopLoss); }
     if (s.target1) { minP = Math.min(minP, s.target1); maxP = Math.max(maxP, s.target1); }
+    if (s.target2) { minP = Math.min(minP, s.target2); maxP = Math.max(maxP, s.target2); }
+    if (s.ltp && s.ltp > 0) { minP = Math.min(minP, s.ltp); maxP = Math.max(maxP, s.ltp); }
 
     const pad = (maxP - minP) * 0.10 || 1;
     minP -= pad;
@@ -597,6 +637,58 @@ const AAAScreenerModule = (function () {
       ctx.font = 'bold 11px sans-serif';
       ctx.fillText(`${isEn ? 'Target 1' : 'टार्गेट १'}: ₹${s.target1}`, margin.left + plotW - 8, yT1 - 5);
     }
+    if (s.target2) {
+      const yT2 = getY(s.target2);
+      ctx.strokeStyle = '#047857';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(margin.left, yT2);
+      ctx.lineTo(margin.left + plotW, yT2);
+      ctx.stroke();
+      ctx.fillStyle = '#047857';
+      ctx.font = 'bold 11px sans-serif';
+      ctx.fillText(`${isEn ? 'Target 2' : 'टार्गेट २'}: ₹${s.target2}`, margin.left + plotW - 8, yT2 - 5);
+    }
+
+    // Dynamic Live LTP Line & Pill
+    if (s.ltp && s.ltp > 0) {
+      const yLtp = getY(s.ltp);
+      const isUp = (s.type === 'BUY' && s.ltp >= s.entry) || (s.type === 'SELL' && s.ltp <= s.entry);
+      const ltpCol = isUp ? '#059669' : '#dc2626';
+
+      ctx.save();
+      ctx.strokeStyle = ltpCol;
+      ctx.lineWidth = 2;
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath();
+      ctx.moveTo(margin.left, yLtp);
+      ctx.lineTo(margin.left + plotW, yLtp);
+      ctx.stroke();
+
+      const ltpText = `● LIVE LTP: ₹${Number(s.ltp).toFixed(2)}`;
+      ctx.font = 'bold 11px sans-serif';
+      const textWidth = ctx.measureText(ltpText).width;
+      const bW = textWidth + 14;
+      const bH = 18;
+      const bX = margin.left + plotW - bW - 4;
+      const bY = yLtp - bH / 2;
+
+      ctx.fillStyle = ltpCol;
+      ctx.beginPath();
+      if (typeof ctx.roundRect === 'function') {
+        ctx.roundRect(bX, bY, bW, bH, 4);
+      } else {
+        ctx.rect(bX, bY, bW, bH);
+      }
+      ctx.fill();
+
+      ctx.fillStyle = '#ffffff';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(ltpText, bX + bW / 2, yLtp);
+      ctx.restore();
+    }
     ctx.setLineDash([]);
   }
 
@@ -705,13 +797,86 @@ const AAAScreenerModule = (function () {
     }
   }
 
+  function onTick(tick) {
+    if (!tick || !tick.symbol || !tick.price) return;
+    const sym = tick.symbol.toUpperCase().trim();
+    const price = Number(tick.price);
+    if (!price || isNaN(price)) return;
+
+    let hasMatches = false;
+    for (const s of allSignals) {
+      if (s.symbol && s.symbol.toUpperCase().trim() === sym) {
+        s.ltp = price;
+        if (tick.changePercent != null) s.changePercent = tick.changePercent;
+
+        // Dynamically re-evaluate target/SL status
+        if (s.type === 'BUY') {
+          if (s.stopLoss && price <= s.stopLoss) {
+            s.status = 'SL_HIT';
+            s.statusText = 'Stop Loss Hit';
+          } else if (s.target2 && price >= s.target2) {
+            s.status = 'TARGET_2_HIT';
+            s.statusText = 'Target 2 Hit (1:2.5)';
+          } else if (s.target1 && price >= s.target1) {
+            s.status = 'TARGET_1_HIT';
+            s.statusText = 'Target 1 Hit (1:1.5)';
+          } else {
+            s.status = 'ACTIVE';
+            s.statusText = 'Active (Live)';
+          }
+        } else if (s.type === 'SELL') {
+          if (s.stopLoss && price >= s.stopLoss) {
+            s.status = 'SL_HIT';
+            s.statusText = 'Stop Loss Hit';
+          } else if (s.target2 && price <= s.target2) {
+            s.status = 'TARGET_2_HIT';
+            s.statusText = 'Target 2 Hit (1:2.5)';
+          } else if (s.target1 && price <= s.target1) {
+            s.status = 'TARGET_1_HIT';
+            s.statusText = 'Target 1 Hit (1:1.5)';
+          } else {
+            s.status = 'ACTIVE';
+            s.statusText = 'Active (Live)';
+          }
+        }
+        hasMatches = true;
+
+        // Update DOM elements for this symbol
+        const ltpBadges = document.querySelectorAll(`.aaa-ltp-${sym}`);
+        const isUp = (s.type === 'BUY' && price >= s.entry) || (s.type === 'SELL' && price <= s.entry);
+        ltpBadges.forEach(el => {
+          el.textContent = `(LTP: ₹${price.toFixed(2)})`;
+          el.style.color = isUp ? '#059669' : '#dc2626';
+          el.classList.remove('aaa-price-flash');
+          void el.offsetWidth;
+          el.classList.add('aaa-price-flash');
+        });
+
+        const statusBadges = document.querySelectorAll(`.aaa-status-${sym}`);
+        statusBadges.forEach(el => {
+          el.textContent = s.statusText || s.status;
+          el.style.cssText = `font-size:10px; font-weight:700; padding:2px 6px; border-radius:4px; ${getStatusBadgeStyle(s.status)}`;
+        });
+      }
+    }
+
+    // If modal is currently open and viewing this symbol, update modal subtitle and canvas
+    if (currentChartData && currentChartData.symbol && currentChartData.symbol.toUpperCase().trim() === sym) {
+      currentChartData.ltp = price;
+      updateModalSubtitle(currentChartData);
+      drawCandlestickModal(currentChartData);
+    }
+  }
+
   return {
     init,
     runScreener,
     openChartModal,
     closeChartModal,
     openInMainPortal,
-    onLanguageChange
+    onLanguageChange,
+    onTick,
+    getActiveSymbols
   };
 })();
 

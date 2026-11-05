@@ -1,0 +1,997 @@
+// ============================================================================
+// TRADE SETUP (STOCK STRATEGY ALERT SCANNER)
+// 5-Minute Heikin Ashi Reversal & Confirmation Candle (CC) Strategy Engine
+// ============================================================================
+
+const TradeSetupModule = (function () {
+  const state = {
+    indices: [],
+    signals: [],
+    filteredSignals: [],
+    activeFilter: 'ALL',
+    searchQuery: '',
+    selectedDate: '',
+    availableDates: [],
+    audioEnabled: true,
+    notificationsEnabled: false,
+    refreshIntervalSeconds: 60,
+    secondsRemaining: 60,
+    timerId: null,
+    countdownId: null,
+    knownSignalIds: new Set(),
+    currentModalSignal: null,
+    chartData: null
+  };
+
+  let audioCtx = null;
+  let isInitialized = false;
+
+  function loadAudioPreference() {
+    try {
+      const saved = localStorage.getItem('fin_ts_audio_enabled');
+      if (saved !== null) {
+        state.audioEnabled = (saved === '1');
+      }
+    } catch (e) {}
+  }
+
+  function updateAudioButtonUI() {
+    const btnAudio = document.getElementById('tsBtnAudioToggle');
+    if (!btnAudio) return;
+    btnAudio.classList.toggle('active', state.audioEnabled);
+    btnAudio.classList.toggle('muted', !state.audioEnabled);
+    const txt = btnAudio.querySelector('.ts-audio-text');
+    if (txt) {
+      const isEn = window.I18N && window.I18N.getLang() === 'en';
+      const key = state.audioEnabled ? 'ts_audio_on' : 'ts_audio_off';
+      txt.setAttribute('data-i18n', key);
+      txt.textContent = state.audioEnabled 
+        ? (isEn ? '🔊 Audio ON' : '🔊 ध्वनी चालू') 
+        : (isEn ? '🔇 Audio OFF' : '🔇 ध्वनी बंद');
+    }
+  }
+
+  function getAudioContext() {
+    if (!audioCtx) {
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      if (AudioContextClass) {
+        audioCtx = new AudioContextClass();
+      }
+    }
+    if (audioCtx && audioCtx.state === 'suspended') {
+      audioCtx.resume();
+    }
+    return audioCtx;
+  }
+
+  function playAlertSound(type = 'BUY') {
+    if (!state.audioEnabled) return;
+    try {
+      const ctx = getAudioContext();
+      if (!ctx) return;
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      gain.connect(ctx.destination);
+      osc.connect(gain);
+
+      if (type === 'BUY') {
+        osc.frequency.setValueAtTime(523.25, now);
+        osc.frequency.exponentialRampToValueAtTime(659.25, now + 0.15);
+        osc.frequency.exponentialRampToValueAtTime(783.99, now + 0.30);
+        gain.gain.setValueAtTime(0.01, now);
+        gain.gain.linearRampToValueAtTime(0.35, now + 0.08);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.65);
+        osc.start(now);
+        osc.stop(now + 0.65);
+      } else {
+        osc.frequency.setValueAtTime(783.99, now);
+        osc.frequency.exponentialRampToValueAtTime(659.25, now + 0.15);
+        osc.frequency.exponentialRampToValueAtTime(523.25, now + 0.30);
+        gain.gain.setValueAtTime(0.01, now);
+        gain.gain.linearRampToValueAtTime(0.35, now + 0.08);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.65);
+        osc.start(now);
+        osc.stop(now + 0.65);
+      }
+    } catch (err) {
+      console.warn("Audio play error:", err);
+    }
+  }
+
+  function triggerBrowserNotification(signal) {
+    if (!state.notificationsEnabled || !('Notification' in window)) return;
+    if (Notification.permission !== 'granted') return;
+    const isEn = window.I18N && window.I18N.getLang() === 'en';
+    const titlePrefix = signal.Type === 'BUY'
+      ? (isEn ? '🟢 BUY (Call): ' : '🟢 BUY (कॉल): ')
+      : (isEn ? '🔴 SELL (Put): ' : '🔴 SELL (पुट): ');
+    const title = titlePrefix + signal.Symbol + ' (' + signal.ATM + ')';
+    const entryLbl = isEn ? 'Entry' : 'एन्ट्री';
+    const options = {
+      body: `${entryLbl}: ₹${signal.Entry} | SL: ₹${signal.StopLoss} | CC: ${signal.CCPosition}`,
+      requireInteraction: false
+    };
+    try {
+      const notif = new Notification(title, options);
+      notif.onclick = function () {
+        window.focus();
+        showSignalModal(signal);
+      };
+    } catch (e) {
+      console.warn("Notification error:", e);
+    }
+  }
+
+  function convertToHeikinAshi(rawCandles) {
+    if (!rawCandles || rawCandles.length === 0) return [];
+    const ha = [];
+    let prevHaOpen = rawCandles[0].open;
+    let prevHaClose = rawCandles[0].close;
+
+    for (let i = 0; i < rawCandles.length; i++) {
+      const c = rawCandles[i];
+      const rawHaClose = (c.open + c.high + c.low + c.close) / 4;
+      const rawHaOpen = i === 0 ? (c.open + c.close) / 2 : (prevHaOpen + prevHaClose) / 2;
+      const rawHaHigh = Math.max(c.high, rawHaOpen, rawHaClose);
+      const rawHaLow = Math.min(c.low, rawHaOpen, rawHaClose);
+      prevHaOpen = rawHaOpen;
+      prevHaClose = rawHaClose;
+
+      const haOpen = Number(rawHaOpen.toFixed(2));
+      const haHigh = Number(rawHaHigh.toFixed(2));
+      const haLow = Number(rawHaLow.toFixed(2));
+      const haClose = Number(rawHaClose.toFixed(2));
+
+      const isGreen = haClose > haOpen;
+      const isRed = haClose < haOpen;
+      const body = Number(Math.abs(haClose - haOpen).toFixed(2));
+      const range = Math.max(Number((haHigh - haLow).toFixed(2)), 0.01);
+      const lowerWick = Number((Math.min(haOpen, haClose) - haLow).toFixed(2));
+      const upperWick = Number((haHigh - Math.max(haOpen, haClose)).toFixed(2));
+
+      const noLowerWick = isGreen && (body / range) >= 0.20 && lowerWick <= body * 0.03;
+      const noUpperWick = isRed && (body / range) >= 0.20 && upperWick <= body * 0.03;
+
+      ha.push({
+        Time: c.time || `Bar ${i + 1}`,
+        Timestamp: c.timestamp || Date.now(),
+        Open: c.open,
+        High: c.high,
+        Low: c.low,
+        Close: c.close,
+        HA_Open: haOpen,
+        HA_High: haHigh,
+        HA_Low: haLow,
+        HA_Close: haClose,
+        IsGreen: isGreen,
+        NoLowerWick: noLowerWick,
+        NoUpperWick: noUpperWick
+      });
+    }
+    return ha;
+  }
+
+  function calculateATM(symbol, price) {
+    const p = Number(price);
+    const sym = symbol.toUpperCase().trim();
+    let step = 50;
+    if (sym.includes('BANKNIFTY') || sym === 'BANK NIFTY' || sym === '^NSEBANK') step = 100;
+    else if (sym.includes('SENSEX') || sym === '^BSESN') step = 100;
+    else if (sym.includes('FINNIFTY') || sym === 'FIN NIFTY' || sym.includes('MIDCP') || sym.includes('MIDCAP')) step = 50;
+    else if (sym.includes('GOLD')) step = 100;
+    else if (sym.includes('CRUDE')) step = 50;
+    else if (p > 5000) step = 100;
+    else if (p > 2000) step = 50;
+    else if (p > 1000) step = 20;
+    else if (p > 500) step = 10;
+    else step = 5;
+
+    const rounded = Math.round(p / step) * step;
+    return {
+      ce: `${rounded} CE`,
+      pe: `${rounded} PE`,
+      strike: rounded
+    };
+  }
+
+  function loadAvailableDates() {
+    const sel = document.getElementById('tsDateSelect');
+    if (!sel) return;
+
+    fetch('./api/tradejini/trade-setup/dates')
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (!data || data.s !== 'ok' || !Array.isArray(data.dates)) return;
+        state.availableDates = data.dates;
+        const isEn = window.I18N && window.I18N.getLang() === 'en';
+
+        let html = `<option value="" ${state.selectedDate === '' ? 'selected' : ''}>📅 ${isEn ? "Today's Live Session" : "आजचे थेट सत्र"} (${data.today})</option>`;
+
+        data.dates.forEach(d => {
+          if (d.isToday) return;
+          const isSel = state.selectedDate === d.fileKey;
+          const statText = isEn
+            ? `${d.stats.total} calls & puts • ${d.stats.targets} targets`
+            : `${d.stats.total} सिग्नल्स • ${d.stats.targets} टार्गेट्स`;
+          html += `<option value="${d.fileKey}" ${isSel ? 'selected' : ''}>📅 ${d.date} (${statText})</option>`;
+        });
+
+        sel.innerHTML = html;
+      })
+      .catch(err => console.warn('Failed to load session dates:', err));
+  }
+
+  // Scan live 5-Minute Heikin Ashi signals directly from Tradejini CubePlus API
+  function scanStrategy() {
+    const isEn = window.I18N && window.I18N.getLang() === 'en';
+    const container = document.getElementById('tsSignalsContainer');
+    const btnScan = document.getElementById('tsBtnScanNow');
+
+    if (btnScan) {
+      btnScan.disabled = true;
+      btnScan.innerHTML = `<span style="display:inline-block; animation: spin 0.8s linear infinite;">⏳</span> <span>${isEn ? 'Scanning...' : 'स्कॅनिंग चालू आहे...'}</span>`;
+    }
+
+    if (container && (!state.signals || state.signals.length === 0)) {
+      container.innerHTML = `
+        <div class="ts-empty-state" style="padding: 48px 20px; text-align: center;">
+          <div class="ts-loading-spinner" style="width: 44px; height: 44px; border: 4px solid #e2e8f0; border-top-color: #2563eb; border-radius: 50%; margin: 0 auto 16px; animation: spin 0.8s linear infinite;"></div>
+          <h3 style="font-size: 16px; font-weight: 700; color: #1e293b; margin-bottom: 6px;">${isEn ? 'Scanning Real 5-Minute Heikin Ashi Setups...' : 'Tradejini CubePlus Live 5-Minute Heikin Ashi स्कॅनिंग चालू आहे...'}</h3>
+          <p style="font-size: 13px; color: #64748b; max-width: 480px; margin: 0 auto;">${isEn ? 'Connecting to live broker feed and computing confirmation candles...' : 'कृपया प्रतीक्षा करा — थेट ब्रोकर डेटाफीडवरून रिअल-टाइम सेटअप तपासले जात आहेत.'}</p>
+        </div>
+      `;
+    }
+
+    const url = state.selectedDate
+      ? `./api/tradejini/trade-setup?date=${encodeURIComponent(state.selectedDate)}`
+      : './api/tradejini/trade-setup';
+
+    fetch(url)
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (data && data.s === 'ok') {
+          if (data.sessionDate) {
+            const dtEl = document.getElementById('tsSessionDateText');
+            if (dtEl) {
+              const isEn = window.I18N && window.I18N.getLang() === 'en';
+              if (data.isHistorical) {
+                dtEl.innerHTML = isEn
+                  ? `<strong>📅 Historical Session: ${data.sessionDate} (Completed)</strong> &bull; Showing archived calls and verified results.`
+                  : `<strong>📅 ऐतिहासिक सत्र: ${data.sessionDate} (पूर्ण)</strong> &bull; रेकॉर्ड झालेले सर्व सिग्नल्स आणि टार्गेट निकाल.`;
+              } else {
+                dtEl.innerHTML = isEn
+                  ? `<strong>Today's Live Session: ${data.sessionDate} (09:15 – 15:30 IST)</strong> &bull; Yesterday's signals reset automatically every morning.`
+                  : `<strong>आजचे थेट सत्र: ${data.sessionDate} (०९:१५ – १५:३० IST)</strong> &bull; कालचे सर्व जुने सिग्नल्स दररोज सकाळी ०९:१५ ला रीसेट होतात.`;
+              }
+            }
+          }
+          if (data.stats) {
+            const sTot = document.getElementById('tsStatTotal');
+            const sAct = document.getElementById('tsStatActive');
+            const sTgt = document.getElementById('tsStatTargets');
+            const sSl = document.getElementById('tsStatSl');
+            if (sTot) sTot.textContent = data.stats.total || 0;
+            if (sAct) sAct.textContent = data.stats.active || 0;
+            if (sTgt) sTgt.textContent = data.stats.targets || 0;
+            if (sSl) sSl.textContent = data.stats.sl || 0;
+          }
+
+          if (Array.isArray(data.indices) && data.indices.length > 0) {
+            state.indices = data.indices;
+            renderIndices();
+          }
+          if (Array.isArray(data.signals)) {
+            const hadKnown = state.knownSignalIds.size > 0;
+            data.signals.forEach(sig => {
+              if (!state.knownSignalIds.has(sig.Id)) {
+                state.knownSignalIds.add(sig.Id);
+                if (hadKnown && sig.Status === 'ACTIVE') {
+                  playAlertSound(sig.Type);
+                  triggerBrowserNotification(sig);
+                }
+              }
+            });
+            // Strictly sort newest signal first
+            data.signals.sort((a, b) => (b.Timestamp || 0) - (a.Timestamp || 0));
+            state.signals = data.signals;
+            filterAndRenderSignals();
+          }
+        } else {
+          filterAndRenderSignals();
+        }
+      })
+      .catch(err => {
+        console.warn('[TradeSetup] Live Tradejini scan error:', err);
+        filterAndRenderSignals();
+      })
+      .finally(() => {
+        if (btnScan) {
+          btnScan.disabled = false;
+          btnScan.innerHTML = `<span>⚡</span> <span>${isEn ? 'Scan Now' : 'आत्ता स्कॅन करा'}</span>`;
+        }
+      });
+  }
+
+  function renderIndices() {
+    const el = document.getElementById('tsIndicesRibbon');
+    if (!el) return;
+    el.innerHTML = state.indices.map(idx => {
+      const isUp = idx.Change >= 0;
+      const col = isUp ? 'var(--color-buy)' : 'var(--color-sell)';
+      const sign = isUp ? '+' : '';
+      return `
+        <div class="ts-index-card">
+          <div class="ts-index-left">
+            <div class="ts-index-name">${idx.Name}</div>
+            <div class="ts-index-atm">ATM: ${idx.ATM}</div>
+          </div>
+          <div class="ts-index-right">
+            <div class="ts-index-ltp" style="color:${col};">₹${idx.LTP.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
+            <div class="ts-index-chg" style="color:${col};">${sign}${idx.Change} (${sign}${idx.ChangePercent}%)</div>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  function getStatusBadgeStyle(status) {
+    if (status === 'TARGET_2_HIT') {
+      return 'background:#dcfce7; color:#15803d; border:1px solid #86efac;';
+    }
+    if (status === 'TARGET_1_HIT') {
+      return 'background:#ecfdf5; color:#047857; border:1px solid #6ee7b7;';
+    }
+    if (status === 'SL_HIT') {
+      return 'background:#fef2f2; color:#b91c1c; border:1px solid #fca5a5;';
+    }
+    return 'background:#eff6ff; color:#1d4ed8; border:1px solid #93c5fd;';
+  }
+
+  function getLocalizedStatusText(sig) {
+    if (!window.I18N) return sig.StatusText || '🟢 ट्रेड चालू (Active)';
+    if (sig.Status === 'TARGET_2_HIT') return I18N.t('status_tgt2');
+    if (sig.Status === 'TARGET_1_HIT') return I18N.t('status_tgt1');
+    if (sig.Status === 'SL_HIT') return I18N.t('status_sl');
+    return I18N.t('status_active');
+  }
+
+  function getLocalizedCC(cc) {
+    if (!cc) return '';
+    if (!window.I18N) return cc;
+    const isEn = window.I18N.getLang() === 'en';
+    if (cc.includes('१ ली हिरवी') || cc.includes('1st Green')) {
+      return isEn ? I18N.t('ts_cc_1st_green') : '१ ली हिरवी HA कॅन्डल (Flat Bottom CC)';
+    }
+    if (cc.includes('२ री हिरवी') || cc.includes('2nd Green')) {
+      return isEn ? I18N.t('ts_cc_2nd_green') : '२ री हिरवी HA कॅन्डल (1st Flat Bottom CC)';
+    }
+    if (cc.includes('१ ली लाल') || cc.includes('1st Red')) {
+      return isEn ? I18N.t('ts_cc_1st_red') : '१ ली लाल HA कॅन्डल (Flat Top CC)';
+    }
+    if (cc.includes('२ री लाल') || cc.includes('2nd Red')) {
+      return isEn ? I18N.t('ts_cc_2nd_red') : '२ री लाल HA कॅन्डल (1st Flat Top CC)';
+    }
+    return cc;
+  }
+
+  function subscribeSignals(signals) {
+    if (!Array.isArray(signals) || signals.length === 0) return;
+    const syms = Array.from(new Set(signals.map(s => (s.Symbol || s.symbol || '').toUpperCase().trim()).filter(Boolean)));
+    if (syms.length === 0) return;
+
+    if (window.AppState && window.AppState.wsClient && window.AppState.wsClient.readyState === WebSocket.OPEN) {
+      try {
+        window.AppState.wsClient.send(JSON.stringify({ type: 'subscribe', symbols: syms }));
+      } catch (e) {}
+    }
+    syms.forEach(sym => {
+      fetch(`./api/tradejini/subscribe?symbol=${encodeURIComponent(sym)}`).catch(() => {});
+    });
+  }
+
+  function getActiveSymbols() {
+    return Array.from(new Set((state.signals || []).map(s => (s.Symbol || s.symbol || '').toUpperCase().trim()).filter(Boolean)));
+  }
+
+  function filterAndRenderSignals() {
+    let filtered = state.signals.slice();
+    if (state.activeFilter === 'BUY') filtered = filtered.filter(s => s.Type === 'BUY');
+    else if (state.activeFilter === 'SELL') filtered = filtered.filter(s => s.Type === 'SELL');
+    else if (state.activeFilter === 'INDEX') filtered = filtered.filter(s => s.Category === 'INDEX');
+    else if (state.activeFilter === 'STOCKS') filtered = filtered.filter(s => s.Category === 'STOCK' || s.Category === 'MCX');
+
+    if (state.searchQuery) {
+      filtered = filtered.filter(s => s.Symbol.toLowerCase().includes(state.searchQuery));
+    }
+    state.filteredSignals = filtered;
+
+    // Update Counts
+    const cAll = document.getElementById('tsCountAll');
+    const cBuy = document.getElementById('tsCountBuy');
+    const cSell = document.getElementById('tsCountSell');
+    const cIdx = document.getElementById('tsCountIndex');
+    const cStk = document.getElementById('tsCountStock');
+    if (cAll) cAll.textContent = state.signals.length;
+    if (cBuy) cBuy.textContent = state.signals.filter(s => s.Type === 'BUY').length;
+    if (cSell) cSell.textContent = state.signals.filter(s => s.Type === 'SELL').length;
+    if (cIdx) cIdx.textContent = state.signals.filter(s => s.Category === 'INDEX').length;
+    if (cStk) cStk.textContent = state.signals.filter(s => s.Category !== 'INDEX').length;
+
+    const container = document.getElementById('tsSignalsContainer');
+    if (!container) return;
+
+    if (filtered.length === 0) {
+      const isEn = window.I18N && window.I18N.getLang() === 'en';
+      container.innerHTML = `
+        <div class="ts-empty-state">
+          <div class="ts-empty-icon">🔍</div>
+          <h3>${isEn ? "No 5-minute Heikin Ashi Setups Triggered Yet in Today's Session" : 'आजच्या थेट सत्रात (०९:१५ ते १५:३०) अद्याप कोणताही ५-मिनिट Heikin Ashi सेटअप मिळालेला नाही'}</h3>
+          <p>${isEn ? '3+ counter-trend HA candles + RSI(7) &lt; 20 / &gt; 80 + First Confirmation Flat-Wick candle will appear here automatically with trigger time.' : '३+ विरुद्ध HA कॅन्डल्स + <strong>RSI(7) &lt; 20 (BUY)</strong> किंवा <strong>RSI(7) &gt; 80 (SELL)</strong> + पहिली Flat-Wick कन्फर्मेशन कॅन्डल पूर्ण होताच नवीन सिग्नल येथे वेळेसह आपोआप दिसेल.'}</p>
+        </div>
+      `;
+      return;
+    }
+
+    container.innerHTML = filtered.map(sig => {
+      const isBuy = sig.Type === 'BUY';
+      const isEn = window.I18N && window.I18N.getLang() === 'en';
+      const badgeClass = isBuy ? 'ts-pill-buy' : 'ts-pill-sell';
+      const badgeText = isBuy 
+        ? (window.I18N ? I18N.t('ts_buy_badge') : '🟢 BUY (कॉल सेटअप)') 
+        : (window.I18N ? I18N.t('ts_sell_badge') : '🔴 SELL (पुट सेटअप)');
+      const statusStyle = getStatusBadgeStyle(sig.Status || 'ACTIVE');
+      const statusText = getLocalizedStatusText(sig);
+      const haO = sig.HA_Open != null ? sig.HA_Open : sig.Entry;
+      const haH = sig.HA_High != null ? sig.HA_High : sig.Entry;
+      const haL = sig.HA_Low != null ? sig.HA_Low : sig.StopLoss;
+      const haC = sig.HA_Close != null ? sig.HA_Close : sig.Entry;
+      const priorTrend = isEn 
+        ? (isBuy ? '3+ Red HA Candles' : '3+ Green HA Candles') 
+        : (sig.PriorTrend || (isBuy ? '३+ लाल HA कॅन्डल्स' : '३+ हिरव्या HA कॅन्डल्स'));
+      const rsiDisplay = sig.RSILabel || (sig.RSI != null ? `${sig.RSI} (${isBuy ? '< 20 Oversold' : '> 80 Overbought'})` : (isBuy ? '< 20 Oversold' : '> 80 Overbought'));
+      const rsiBadgeStyle = isBuy
+        ? 'background:#ecfdf5; color:#047857; border:1px solid #6ee7b7;'
+        : 'background:#fef2f2; color:#b91c1c; border:1px solid #fca5a5;';
+      const localizedCC = getLocalizedCC(sig.CCPosition);
+
+      const tAtm = window.I18N ? I18N.t('ts_card_atm') : '🎯 शिफारस केलेला पर्याय (ATM Strike):';
+      const tLtp = window.I18N ? I18N.t('ts_live_ltp') : 'चालू भाव (Live LTP):';
+      const tOhlc = window.I18N ? I18N.t('ts_signal_ohlc') : '🕯️ Signal 5m HA OHLC:';
+      const tPrior = window.I18N ? I18N.t('ts_prior_trend') : 'मागील ट्रेंड:';
+      const tEntry = window.I18N ? I18N.t('ts_lbl_entry') : 'एन्ट्री (HA Close):';
+      const tSl = window.I18N ? I18N.t('ts_lbl_sl') : 'स्टॉप लॉस';
+      const tT1 = window.I18N ? I18N.t('ts_lbl_t1') : 'टार्गेट १ (1:1.5):';
+      const tT2 = window.I18N ? I18N.t('ts_lbl_t2') : 'टार्गेट २ (1:2.5):';
+      const tRisk = window.I18N ? I18N.t('ts_lbl_risk') : 'जोखीम (Risk):';
+      const tCc = window.I18N ? I18N.t('ts_lbl_cc') : 'कन्फर्मेशन (CC):';
+      const tBtnView = window.I18N ? I18N.t('ts_btn_view_ha') : '📊 हीकेन आशी चार्ट पहा';
+      const tBtnLoad = window.I18N ? I18N.t('ts_btn_load_main') : '🚀 मुख्य टर्मिनलवर लोड करा';
+
+      return `
+        <div class="ts-signal-card ${isBuy ? 'buy-border' : 'sell-border'}" style="${sig.Status === 'SL_HIT' ? 'opacity:0.86;' : ''}">
+          <div class="ts-card-header" style="flex-wrap:wrap; gap:6px;">
+            <div class="ts-card-title-group">
+              <span class="ts-pill ${badgeClass}">${badgeText}</span>
+              <h3 class="ts-symbol-title">${sig.Symbol}</h3>
+              <span class="ts-cat-badge">${sig.Category}</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+              <span style="font-size:11px; font-weight:800; padding:3px 8px; border-radius:999px; ${statusStyle}">
+                ${statusText}
+              </span>
+              <div class="ts-card-time" style="display:inline-flex; align-items:center; gap:4px; font-weight:700; background:#f8fafc; border:1px solid #cbd5e1; padding:3px 9px; border-radius:6px; font-size:11px; color:#1e293b;">
+                <span>⏰</span>
+                <span>${sig.DisplayTime || sig.SignalBarTime || sig.Time}</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="ts-atm-banner" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:12px;">
+            <div>
+              <span>${tAtm}</span>
+              <strong>${sig.ATM}</strong>
+            </div>
+            <div style="font-size:12px; font-weight:800; color:#0f172a; background:#ffffff; padding:3px 10px; border-radius:6px; border:1px solid #cbd5e1;">
+              ${tLtp} <span class="ts-ltp-${sig.Symbol}" style="color:${isBuy ? '#059669' : '#dc2626'};">₹${sig.LTP != null ? Number(sig.LTP).toFixed(2) : sig.Entry}</span>
+            </div>
+          </div>
+
+          <div class="ts-card-grid">
+            <div class="ts-cell">
+              <span class="ts-cell-label">${tEntry}</span>
+              <strong class="ts-cell-val" style="color:var(--text-main);">₹${sig.Entry}</strong>
+            </div>
+            <div class="ts-cell">
+              <span class="ts-cell-label">${tSl} (${isBuy ? 'HA Low' : 'HA High'}):</span>
+              <strong class="ts-cell-val text-danger">₹${sig.StopLoss}</strong>
+            </div>
+            <div class="ts-cell">
+              <span class="ts-cell-label">${tT1}</span>
+              <strong class="ts-cell-val text-success">₹${sig.Target1}</strong>
+            </div>
+            <div class="ts-cell">
+              <span class="ts-cell-label">${tT2}</span>
+              <strong class="ts-cell-val text-success">₹${sig.Target2}</strong>
+            </div>
+            <div class="ts-cell">
+              <span class="ts-cell-label">${tRisk}</span>
+              <strong class="ts-cell-val">₹${sig.RiskPoints} pts</strong>
+            </div>
+            <div class="ts-cell">
+              <span class="ts-cell-label">${tCc}</span>
+              <strong class="ts-cell-val text-warning">${localizedCC}</strong>
+            </div>
+          </div>
+
+          <div class="ts-card-actions">
+            <button class="ts-btn-outline" onclick="TradeSetupModule.viewChart('${sig.Symbol}', '${sig.Id}')">
+              ${tBtnView}
+            </button>
+            <button class="ts-btn-solid" onclick="TradeSetupModule.openInMainChart('${sig.Symbol}')">
+              ${tBtnLoad}
+            </button>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  function showSignalModal(sig) {
+    state.currentModalSignal = sig;
+    const modal = document.getElementById('tsAlertModal');
+    if (!modal) return;
+    const isEn = window.I18N && window.I18N.getLang() === 'en';
+    document.getElementById('tsModalSymbol').textContent = sig.Symbol;
+    document.getElementById('tsModalType').textContent = sig.Type === 'BUY' 
+      ? (isEn ? '🟢 BUY Call Alert' : '🟢 BUY (कॉल) अलर्ट') 
+      : (isEn ? '🔴 SELL Put Alert' : '🔴 SELL (पुट) अलर्ट');
+    document.getElementById('tsModalATM').textContent = sig.ATM;
+    document.getElementById('tsModalEntry').textContent = `₹${sig.Entry}`;
+    document.getElementById('tsModalSL').textContent = `₹${sig.StopLoss}`;
+    document.getElementById('tsModalTgt').textContent = `₹${sig.Target2}`;
+    modal.classList.add('active');
+  }
+
+  function closeSignalModal() {
+    const modal = document.getElementById('tsAlertModal');
+    if (modal) modal.classList.remove('active');
+  }
+
+  function updateTsModalSubtitle(sig) {
+    const isEn = window.I18N && window.I18N.getLang() === 'en';
+    const curLtp = sig.LTP != null ? Number(sig.LTP).toFixed(2) : sig.Entry;
+    const isUp = (sig.Type === 'BUY' && Number(curLtp) >= sig.Entry) || (sig.Type === 'SELL' && Number(curLtp) <= sig.Entry);
+    const ltpCol = isUp ? '#059669' : '#dc2626';
+
+    const titleEl = document.getElementById('tsChartTitle');
+    if (titleEl) {
+      titleEl.textContent = `${sig.Symbol} - 5M Heikin Ashi + RSI(7) Setup (${sig.StatusText || 'Active'})`;
+    }
+    const subEl = document.getElementById('tsChartSubtitle');
+    if (subEl) {
+      subEl.innerHTML = `${sig.Type} | Time: ${sig.Time} | Entry: ₹${sig.Entry} | SL: ₹${sig.StopLoss} | Tgt 1: ₹${sig.Target1} | <strong style="color:${ltpCol}; font-size:12px;">Live LTP: ₹${curLtp}</strong>`;
+    }
+  }
+
+  function viewChart(sym, sigId) {
+    let sig = sigId ? state.signals.find(s => s.Id === sigId) : null;
+    if (!sig) sig = state.signals.find(s => s.Symbol === sym);
+    if (!sig && state.filteredSignals) {
+      sig = state.filteredSignals.find(s => s.Symbol === sym);
+    }
+    if (!sig) return;
+
+    const showModal = () => {
+      state.chartData = sig;
+      const modal = document.getElementById('tsChartModal');
+      if (!modal) return;
+      const rsiInfo = sig.RSILabel || (sig.RSI != null ? sig.RSI : (sig.Type === 'BUY' ? '< 20' : '> 80'));
+      updateTsModalSubtitle(sig);
+      modal.classList.add('active');
+      setTimeout(() => drawHeikinAshiChart(sig), 80);
+    };
+
+    if (!sig.Candles || sig.Candles.length === 0) {
+      fetch(`./api/tradejini/candles?symbol=${encodeURIComponent(sym)}&resolution=5`)
+        .then(res => res.ok ? res.json() : null)
+        .then(data => {
+          if (data && data.s === 'ok' && Array.isArray(data.candles) && data.candles.length > 0) {
+            sig.Candles = convertToHeikinAshi(data.candles).slice(-24);
+          }
+          showModal();
+        })
+        .catch(() => showModal());
+    } else {
+      showModal();
+    }
+  }
+
+  function closeChartModal() {
+    const modal = document.getElementById('tsChartModal');
+    if (modal) modal.classList.remove('active');
+  }
+
+  function drawHeikinAshiChart(sig) {
+    const canvas = document.getElementById('tsHaCanvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const parent = canvas.parentElement;
+    const width = Math.max(parent ? parent.clientWidth : 750, 400);
+    const height = 380;
+    canvas.width = width * window.devicePixelRatio;
+    canvas.height = height * window.devicePixelRatio;
+    canvas.style.width = width + 'px';
+    canvas.style.height = height + 'px';
+    ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+
+    ctx.clearRect(0, 0, width, height);
+
+    const candles = sig.Candles || [];
+    if (candles.length === 0) return;
+
+    const margin = { top: 28, right: 80, bottom: 30, left: 20 };
+    const plotW = width - margin.left - margin.right;
+    const plotH = height - margin.top - margin.bottom;
+
+    let minP = Infinity, maxP = -Infinity;
+    candles.forEach(c => {
+      minP = Math.min(minP, c.HA_Low);
+      maxP = Math.max(maxP, c.HA_High);
+    });
+    if (sig.Entry) { minP = Math.min(minP, sig.Entry); maxP = Math.max(maxP, sig.Entry); }
+    if (sig.StopLoss) { minP = Math.min(minP, sig.StopLoss); maxP = Math.max(maxP, sig.StopLoss); }
+    if (sig.Target1) { minP = Math.min(minP, sig.Target1); maxP = Math.max(maxP, sig.Target1); }
+    if (sig.Target2) { minP = Math.min(minP, sig.Target2); maxP = Math.max(maxP, sig.Target2); }
+    if (sig.LTP && sig.LTP > 0) { minP = Math.min(minP, sig.LTP); maxP = Math.max(maxP, sig.LTP); }
+    if (sig.Target1) { minP = Math.min(minP, sig.Target1); maxP = Math.max(maxP, sig.Target1); }
+    if (sig.Target2) { minP = Math.min(minP, sig.Target2); maxP = Math.max(maxP, sig.Target2); }
+
+    const pad = (maxP - minP) * 0.10 || 1;
+    minP -= pad;
+    maxP += pad;
+
+    const getY = p => margin.top + plotH - ((p - minP) / (maxP - minP)) * plotH;
+
+    // Gridlines
+    ctx.strokeStyle = '#e2e8f0';
+    ctx.lineWidth = 1;
+    ctx.fillStyle = '#64748b';
+    ctx.font = '11px sans-serif';
+    for (let s = 0; s <= 5; s++) {
+      const p = minP + (maxP - minP) * (s / 5);
+      const y = getY(p);
+      ctx.beginPath();
+      ctx.moveTo(margin.left, y);
+      ctx.lineTo(margin.left + plotW, y);
+      ctx.stroke();
+      ctx.fillText(p.toFixed(1), margin.left + plotW + 6, y + 4);
+    }
+
+    // Draw Candles
+    const step = plotW / candles.length;
+    const barW = Math.max(step * 0.65, 4);
+    const sigIdx = typeof sig.SignalIndex === 'number' ? sig.SignalIndex : candles.length - 1;
+
+    candles.forEach((c, i) => {
+      const x = margin.left + i * step + step / 2;
+      const isGreen = c.IsGreen;
+      const col = isGreen ? '#089981' : '#f23645';
+
+      // Highlight the Signal Confirmation Candle (CC)
+      if (i === sigIdx) {
+        ctx.fillStyle = 'rgba(245, 158, 11, 0.14)';
+        ctx.fillRect(margin.left + i * step, margin.top, step, plotH);
+        ctx.fillStyle = '#b45309';
+        ctx.font = 'bold 10px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('★ CC', x, margin.top - 8);
+      }
+
+      const yO = getY(c.HA_Open);
+      const yC = getY(c.HA_Close);
+      const yH = getY(c.HA_High);
+      const yL = getY(c.HA_Low);
+
+      // Wicks
+      ctx.strokeStyle = col;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(x, yH);
+      ctx.lineTo(x, Math.min(yO, yC));
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(x, Math.max(yO, yC));
+      ctx.lineTo(x, yL);
+      ctx.stroke();
+
+      // Body
+      ctx.fillStyle = col;
+      const top = Math.min(yO, yC);
+      const h = Math.max(Math.abs(yC - yO), 2);
+      ctx.fillRect(x - barW / 2, top, barW, h);
+
+      // Time axis
+      if (i === sigIdx || i % 3 === 0 || i === candles.length - 1) {
+        ctx.fillStyle = i === sigIdx ? '#b45309' : '#94a3b8';
+        ctx.font = i === sigIdx ? 'bold 10px sans-serif' : '10px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(c.Time, x, height - margin.bottom + 16);
+      }
+    });
+
+    // Draw Entry, SL, Target 1 & Target 2 lines
+    ctx.textAlign = 'right';
+    const isEn = window.I18N && window.I18N.getLang() === 'en';
+    if (sig.Entry) {
+      const yEnt = getY(sig.Entry);
+      ctx.strokeStyle = '#2563eb';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.moveTo(margin.left, yEnt);
+      ctx.lineTo(margin.left + plotW, yEnt);
+      ctx.stroke();
+      ctx.fillStyle = '#2563eb';
+      ctx.font = 'bold 11px sans-serif';
+      ctx.fillText(`${isEn ? 'Entry (HA Close)' : 'एन्ट्री (HA Close)'}: ₹${sig.Entry}`, margin.left + plotW - 8, yEnt - 6);
+    }
+    if (sig.StopLoss) {
+      const ySl = getY(sig.StopLoss);
+      ctx.strokeStyle = '#ef4444';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([5, 4]);
+      ctx.beginPath();
+      ctx.moveTo(margin.left, ySl);
+      ctx.lineTo(margin.left + plotW, ySl);
+      ctx.stroke();
+      ctx.fillStyle = '#ef4444';
+      ctx.font = 'bold 11px sans-serif';
+      ctx.fillText(`${isEn ? 'Stop Loss' : 'स्टॉप लॉस'}: ₹${sig.StopLoss}`, margin.left + plotW - 8, ySl + 14);
+    }
+    if (sig.Target1) {
+      const yT1 = getY(sig.Target1);
+      ctx.strokeStyle = '#059669';
+      ctx.lineWidth = 1.2;
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath();
+      ctx.moveTo(margin.left, yT1);
+      ctx.lineTo(margin.left + plotW, yT1);
+      ctx.stroke();
+      ctx.fillStyle = '#059669';
+      ctx.font = 'bold 10px sans-serif';
+      ctx.fillText(`T1: ₹${sig.Target1}`, margin.left + 90, yT1 - 4);
+    }
+    if (sig.Target2) {
+      const yTgt = getY(sig.Target2);
+      ctx.strokeStyle = '#10b981';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(margin.left, yTgt);
+      ctx.lineTo(margin.left + plotW, yTgt);
+      ctx.stroke();
+      ctx.fillStyle = '#10b981';
+      ctx.font = 'bold 11px sans-serif';
+      ctx.fillText(`${isEn ? 'Target 2' : 'टार्गेट २'}: ₹${sig.Target2}`, margin.left + plotW - 8, yTgt - 6);
+    }
+    ctx.setLineDash([]);
+  }
+
+  function openInMainChart(symbol) {
+    closeChartModal();
+    if (window.switchView) {
+      window.switchView('chart');
+    }
+    if (window.AppState) {
+      window.AppState.chartType = 'heikinashi';
+      window.AppState.currentTimeframe = '5';
+      const btns = document.querySelectorAll('.chart-type-btn');
+      btns.forEach(b => {
+        if (b.getAttribute('data-type') === 'heikinashi') b.classList.add('active');
+        else b.classList.remove('active');
+      });
+      const tfBtns = document.querySelectorAll('.tf-btn');
+      tfBtns.forEach(b => {
+        if (b.getAttribute('data-tf') === '5') b.classList.add('active');
+        else b.classList.remove('active');
+      });
+    }
+    if (window.selectStock) {
+      window.selectStock(symbol);
+    }
+
+    // Scroll window and views-wrapper to top inside iframe
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+    const vw = document.querySelector('.views-wrapper');
+    if (vw) vw.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+
+    // Safe layout recalculation inside iframe
+    if (window.AppState && window.AppState.chart) {
+      window.AppState.chart.resize();
+      setTimeout(() => {
+        if (window.AppState && window.AppState.chart) window.AppState.chart.resize();
+      }, 150);
+    }
+  }
+
+  function init() {
+    loadAudioPreference();
+    updateAudioButtonUI();
+    loadAvailableDates();
+    scanStrategy();
+
+    // Guard against duplicate listener binding and duplicate interval timers on view switch
+    if (isInitialized) return;
+    isInitialized = true;
+
+    // Event listeners
+    const dateSelect = document.getElementById('tsDateSelect');
+    if (dateSelect) {
+      dateSelect.addEventListener('change', (e) => {
+        state.selectedDate = e.target.value;
+        const isEn = window.I18N && window.I18N.getLang() === 'en';
+        const labelEl = document.getElementById('tsSelectedDateLabel');
+        if (labelEl) {
+          if (!state.selectedDate) {
+            labelEl.textContent = isEn ? "Today's Live Session" : "आजचे थेट सत्र";
+          } else {
+            const matched = state.availableDates.find(d => d.fileKey === state.selectedDate);
+            labelEl.textContent = matched ? `📅 ${matched.date}` : `📅 ${state.selectedDate.replace(/_/g, ' ')}`;
+          }
+        }
+        if (typeof showToastNotification === 'function') {
+          showToastNotification(isEn ? 'Loading session signals...' : 'सत्राचे सिग्नल्स लोड होत आहेत...', 'info');
+        }
+        scanStrategy();
+      });
+    }
+
+    const btnScan = document.getElementById('tsBtnScanNow');
+    if (btnScan) {
+      btnScan.addEventListener('click', () => {
+        scanStrategy();
+      });
+    }
+
+    const btnAudio = document.getElementById('tsBtnAudioToggle');
+    if (btnAudio) {
+      btnAudio.addEventListener('click', (e) => {
+        e.preventDefault();
+        state.audioEnabled = !state.audioEnabled;
+        try {
+          localStorage.setItem('fin_ts_audio_enabled', state.audioEnabled ? '1' : '0');
+        } catch (err) {}
+        updateAudioButtonUI();
+        const isEn = window.I18N && window.I18N.getLang() === 'en';
+        if (typeof showToastNotification === 'function') {
+          showToastNotification(
+            state.audioEnabled 
+              ? (isEn ? 'Sound alerts enabled' : 'ध्वनी सूचना चालू केल्या') 
+              : (isEn ? 'Sound alerts muted' : 'ध्वनी सूचना म्यूट केल्या'),
+            'info'
+          );
+        }
+        if (state.audioEnabled) playAlertSound('BUY');
+      });
+    }
+
+    const btnNotif = document.getElementById('tsBtnNotifToggle');
+    if (btnNotif) {
+      btnNotif.addEventListener('click', async () => {
+        const isEn = window.I18N && window.I18N.getLang() === 'en';
+        if (!('Notification' in window)) {
+          showToastNotification(isEn ? 'Your browser does not support desktop notifications.' : 'तुमचा ब्राऊझर डेस्कटॉप नोटिफिकेशन्स सपोर्ट करत नाही.', 'info');
+          return;
+        }
+        if (Notification.permission !== 'granted') {
+          const perm = await Notification.requestPermission();
+          state.notificationsEnabled = (perm === 'granted');
+        } else {
+          state.notificationsEnabled = !state.notificationsEnabled;
+        }
+        btnNotif.classList.toggle('active', state.notificationsEnabled);
+        btnNotif.querySelector('.ts-notif-text').textContent = state.notificationsEnabled 
+          ? (isEn ? 'Alerts ON' : 'नोटिफिकेशन चालू') 
+          : (isEn ? 'Alerts OFF' : 'नोटिफिकेशन बंद');
+      });
+    }
+
+    const search = document.getElementById('tsInputSearch');
+    if (search) {
+      search.addEventListener('input', (e) => {
+        state.searchQuery = e.target.value.toLowerCase().trim();
+        filterAndRenderSignals();
+      });
+    }
+
+    // Filter tabs
+    const tabs = document.querySelectorAll('.ts-tab-btn');
+    tabs.forEach(tab => {
+      tab.addEventListener('click', () => {
+        tabs.forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        state.activeFilter = tab.getAttribute('data-filter');
+        filterAndRenderSignals();
+      });
+    });
+
+    // Auto-refresh timer (cleanly cleared and tracked)
+    if (state.timerId) clearInterval(state.timerId);
+    state.timerId = setInterval(() => {
+      scanStrategy();
+    }, 60000);
+  }
+
+  function openModalSignalInMainChart() {
+    if (state.chartData && state.chartData.Symbol) {
+      openInMainChart(state.chartData.Symbol);
+    }
+  }
+
+  function onLanguageChange() {
+    filterAndRenderSignals();
+    const isEn = window.I18N && window.I18N.getLang() === 'en';
+    const btnScan = document.getElementById('tsBtnScanNow');
+    if (btnScan) {
+      btnScan.innerHTML = `<span>⚡</span><span>${isEn ? 'Scan Now' : 'आत्ता स्कॅन करा'}</span>`;
+    }
+    updateAudioButtonUI();
+    const btnNotif = document.getElementById('tsBtnNotifToggle');
+    if (btnNotif) {
+      const txt = btnNotif.querySelector('.ts-notif-text');
+      if (txt) {
+        txt.textContent = state.notificationsEnabled 
+          ? (isEn ? 'Alerts ON' : 'नोटिफिकेशन चालू') 
+          : (isEn ? 'Alerts OFF' : 'नोटिफिकेशन बंद');
+      }
+    }
+  }
+
+  function onTick(tick) {
+    if (!tick || !tick.symbol || !tick.price) return;
+    const sym = tick.symbol.toUpperCase().trim();
+    const price = Number(tick.price);
+    if (!price || isNaN(price)) return;
+
+    if (Array.isArray(state.signals)) {
+      for (const sig of state.signals) {
+        if ((sig.Symbol || sig.symbol || '').toUpperCase().trim() === sym) {
+          sig.LTP = price;
+          // Update DOM badges
+          const ltpBadges = document.querySelectorAll(`.ts-ltp-${sym}`);
+          const isUp = (sig.Type === 'BUY' && price >= sig.Entry) || (sig.Type === 'SELL' && price <= sig.Entry);
+          ltpBadges.forEach(el => {
+            el.textContent = `₹${price.toFixed(2)}`;
+            el.style.color = isUp ? '#059669' : '#dc2626';
+          });
+        }
+      }
+    }
+
+    if (state.chartData && (state.chartData.Symbol || state.chartData.symbol || '').toUpperCase().trim() === sym) {
+      state.chartData.LTP = price;
+      updateTsModalSubtitle(state.chartData);
+      drawHeikinAshiChart(state.chartData);
+    }
+  }
+
+  return {
+    init,
+    scanStrategy,
+    viewChart,
+    closeChartModal,
+    closeSignalModal,
+    openInMainChart,
+    openModalSignalInMainChart,
+    onLanguageChange,
+    onTick,
+    getActiveSymbols
+  };
+})();
+
+if (typeof window !== "undefined") {
+  window.TradeSetupModule = TradeSetupModule;
+}
