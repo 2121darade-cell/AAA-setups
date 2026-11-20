@@ -1,0 +1,16 @@
+{
+  "date": "08 Nov 2026",
+  "fileKey": "08_Nov_2026",
+  "updatedAt": "08 Nov 2026 16:01:23 IST",
+  "timeframe": "1D (Daily Timeframe)",
+  "totalScanned": 189,
+  "stats": {
+    "total": 0,
+    "buy": 0,
+    "sell": 0,
+    "active": 0,
+    "targets": 0,
+    "stopLosses": 0
+  },
+  "signals": []
+}

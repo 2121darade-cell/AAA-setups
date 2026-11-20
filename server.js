@@ -2062,53 +2062,43 @@ function scanDailyCandlesForAaa(sym, dailyCandles, minTrend = 3, lookbackDays = 
   const minIdx = Math.max(minTrend, endIdx - cleanLookback + 1);
   const matches = [];
 
-  // Helper: Measure Uptrend ending at motherIdx (allows at most 1 small pullback/doji pause candle mid-trend)
+  // Helper: Measure Strict Consecutive Uptrend ending at motherIdx (matches UI "सलग Green कॅन्डल्स" rule)
   function measureUptrend(motherIdx) {
     if (motherIdx < 1) return 0;
     const cMother = dailyCandles[motherIdx];
     if (cMother.close <= cMother.open) return 0;
     let greenCount = 0;
-    let pauseUsed = false;
-    let startIdx = motherIdx;
     for (let k = motherIdx; k >= 0; k--) {
       const ck = dailyCandles[k];
-      const ckBody = Math.abs(ck.close - ck.open);
       if (ck.close > ck.open) {
         greenCount++;
-        startIdx = k;
-      } else if (k < motherIdx && !pauseUsed && k > 0 && ckBody <= Math.abs(cMother.close - cMother.open) * 0.65) {
-        pauseUsed = true;
       } else {
         break;
       }
     }
     if (greenCount < minTrend) return 0;
+    const startIdx = motherIdx - greenCount + 1;
     const cStart = dailyCandles[startIdx];
     if (cMother.close <= cStart.open && cMother.close <= cStart.close) return 0;
     return greenCount;
   }
 
-  // Helper: Measure Downtrend ending at motherIdx (allows at most 1 small doji/pause candle mid-trend)
+  // Helper: Measure Strict Consecutive Downtrend ending at motherIdx (matches UI "सलग Red कॅन्डल्स" rule)
   function measureDowntrend(motherIdx) {
     if (motherIdx < 1) return 0;
     const cMother = dailyCandles[motherIdx];
     if (cMother.close >= cMother.open) return 0;
     let redCount = 0;
-    let pauseUsed = false;
-    let startIdx = motherIdx;
     for (let k = motherIdx; k >= 0; k--) {
       const ck = dailyCandles[k];
-      const ckBody = Math.abs(ck.close - ck.open);
       if (ck.close < ck.open) {
         redCount++;
-        startIdx = k;
-      } else if (k < motherIdx && !pauseUsed && k > 0 && ckBody <= Math.abs(cMother.close - cMother.open) * 0.65) {
-        pauseUsed = true;
       } else {
         break;
       }
     }
     if (redCount < minTrend) return 0;
+    const startIdx = motherIdx - redCount + 1;
     const cStart = dailyCandles[startIdx];
     if (cMother.close >= cStart.open && cMother.close >= cStart.close) return 0;
     return redCount;
@@ -2576,6 +2566,7 @@ async function generateHistoricalAaaSession(targetDateStr, minTrend = 3) {
   }
 
   dedupedSignals.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+  await enrichAaaSignalsWithMultiDayCandles(dedupedSignals);
   saveAaaSession(cleanTargetDate, dedupedSignals, Math.max(scannedCount, scanSymbols.length));
 
   return {
@@ -2632,7 +2623,7 @@ async function syncAaaCalendarSessions() {
   }
 }
 
-function enrichAaaSignalsWithLiveQuotes(signals) {
+async function enrichAaaSignalsWithMultiDayCandles(signals) {
   if (!Array.isArray(signals)) return signals;
   for (const s of signals) {
     if (!s || !s.symbol) continue;
@@ -2641,45 +2632,157 @@ function enrichAaaSignalsWithLiveQuotes(signals) {
       dhan.dhanStream.subscribe(cleanSym);
     } catch (e) {}
 
-    const q = liveQuotesMap.get(cleanSym) || dhan.dhanStream.latestQuotes.get(cleanSym);
+    let dailyCandles = dailyUniverseCandlesMap.get(cleanSym);
+    if (!dailyCandles || dailyCandles.length === 0) {
+      try {
+        const cData = await getTradejiniCandles(cleanSym, 'D', 60);
+        if (cData && cData.s === 'ok' && Array.isArray(cData.candles) && cData.candles.length > 0) {
+          dailyCandles = cData.candles;
+          dailyUniverseCandlesMap.set(cleanSym, dailyCandles);
+        }
+      } catch (e) {}
+    }
+
+    const q = liveQuotesMap.get(cleanSym) || (dhan && dhan.dhanStream && dhan.dhanStream.latestQuotes && dhan.dhanStream.latestQuotes.get(cleanSym));
     if (q && q.price > 0) {
       s.ltp = round2(q.price);
       if (q.change != null) s.change = round2(q.change);
       if (q.changePercent != null) s.changePercent = round2(q.changePercent);
+    }
 
-      // Dynamically re-evaluate target / stop loss status with current live market price
-      if (s.type === 'BUY') {
-        if (s.stopLoss && s.ltp <= s.stopLoss) {
-          s.status = 'SL_HIT';
-          s.statusText = 'Stop Loss Hit';
-        } else if (s.target2 && s.ltp >= s.target2) {
-          s.status = 'TARGET_2_HIT';
-          s.statusText = 'Target 2 Hit (1:2.5)';
-        } else if (s.target1 && s.ltp >= s.target1) {
-          s.status = 'TARGET_1_HIT';
-          s.statusText = 'Target 1 Hit (1:1.5)';
-        } else {
-          s.status = 'ACTIVE';
-          s.statusText = 'Active (Live)';
+    if (dailyCandles && dailyCandles.length > 0) {
+      const sigDateClean = String(s.date || '').replace(/\s*\(1D\)/i, '').replace(/_/g, ' ').trim();
+      const sigIdx = dailyCandles.findIndex(c => {
+        const d1 = String(c.fullDate || '').trim();
+        const d2 = String(c.date || '').trim();
+        return d1 === sigDateClean || d2 === sigDateClean || sigDateClean.includes(d1) || sigDateClean.includes(d2);
+      });
+
+      if (sigIdx !== -1) {
+        const sliceStart = Math.max(0, sigIdx - 14);
+        const sliceEnd = Math.min(dailyCandles.length, sigIdx + 15);
+        s.candles = dailyCandles.slice(sliceStart, sliceEnd);
+        s.signalOffsetFromEnd = (s.candles.length - 1) - (sigIdx - sliceStart);
+
+        let finalStatus = 'ACTIVE';
+        let finalStatusText = '🟢 चालू (Active)';
+        let resDate = null;
+        let resPrice = null;
+
+        for (let k = sigIdx + 1; k < dailyCandles.length; k++) {
+          const bar = dailyCandles[k];
+          const barDate = bar.fullDate || bar.date;
+
+          if (s.type === 'BUY') {
+            if (bar.low <= s.stopLoss && finalStatus === 'ACTIVE') {
+              finalStatus = 'SL_HIT';
+              finalStatusText = `🛑 SL Hit (${barDate})`;
+              resDate = barDate;
+              resPrice = bar.low;
+              break;
+            }
+            if (bar.high >= s.target2) {
+              finalStatus = 'TARGET_2_HIT';
+              finalStatusText = `🎯 Target 2 Hit (${barDate})`;
+              resDate = barDate;
+              resPrice = bar.high;
+              break;
+            }
+            if (bar.high >= s.target1 && finalStatus === 'ACTIVE') {
+              finalStatus = 'TARGET_1_HIT';
+              finalStatusText = `✅ Target 1 Hit (${barDate})`;
+              resDate = barDate;
+              resPrice = bar.high;
+            }
+          } else if (s.type === 'SELL') {
+            if (bar.high >= s.stopLoss && finalStatus === 'ACTIVE') {
+              finalStatus = 'SL_HIT';
+              finalStatusText = `🛑 SL Hit (${barDate})`;
+              resDate = barDate;
+              resPrice = bar.high;
+              break;
+            }
+            if (bar.low <= s.target2) {
+              finalStatus = 'TARGET_2_HIT';
+              finalStatusText = `🎯 Target 2 Hit (${barDate})`;
+              resDate = barDate;
+              resPrice = bar.low;
+              break;
+            }
+            if (bar.low <= s.target1 && finalStatus === 'ACTIVE') {
+              finalStatus = 'TARGET_1_HIT';
+              finalStatusText = `✅ Target 1 Hit (${barDate})`;
+              resDate = barDate;
+              resPrice = bar.low;
+            }
+          }
         }
-      } else if (s.type === 'SELL') {
-        if (s.stopLoss && s.ltp >= s.stopLoss) {
-          s.status = 'SL_HIT';
-          s.statusText = 'Stop Loss Hit';
-        } else if (s.target2 && s.ltp <= s.target2) {
-          s.status = 'TARGET_2_HIT';
-          s.statusText = 'Target 2 Hit (1:2.5)';
-        } else if (s.target1 && s.ltp <= s.target1) {
-          s.status = 'TARGET_1_HIT';
-          s.statusText = 'Target 1 Hit (1:1.5)';
-        } else {
-          s.status = 'ACTIVE';
-          s.statusText = 'Active (Live)';
+
+        if (s.ltp && s.ltp > 0) {
+          if (finalStatus === 'ACTIVE') {
+            if (s.type === 'BUY') {
+              if (s.ltp <= s.stopLoss) {
+                finalStatus = 'SL_HIT';
+                finalStatusText = '🛑 SL Hit (Live)';
+                resDate = 'Live (Today)';
+                resPrice = s.ltp;
+              } else if (s.ltp >= s.target2) {
+                finalStatus = 'TARGET_2_HIT';
+                finalStatusText = '🎯 Target 2 Hit (Live)';
+                resDate = 'Live (Today)';
+                resPrice = s.ltp;
+              } else if (s.ltp >= s.target1) {
+                finalStatus = 'TARGET_1_HIT';
+                finalStatusText = '✅ Target 1 Hit (Live)';
+                resDate = 'Live (Today)';
+                resPrice = s.ltp;
+              }
+            } else if (s.type === 'SELL') {
+              if (s.ltp >= s.stopLoss) {
+                finalStatus = 'SL_HIT';
+                finalStatusText = '🛑 SL Hit (Live)';
+                resDate = 'Live (Today)';
+                resPrice = s.ltp;
+              } else if (s.ltp <= s.target2) {
+                finalStatus = 'TARGET_2_HIT';
+                finalStatusText = '🎯 Target 2 Hit (Live)';
+                resDate = 'Live (Today)';
+                resPrice = s.ltp;
+              } else if (s.ltp <= s.target1) {
+                finalStatus = 'TARGET_1_HIT';
+                finalStatusText = '✅ Target 1 Hit (Live)';
+                resDate = 'Live (Today)';
+                resPrice = s.ltp;
+              }
+            }
+          } else if (finalStatus === 'TARGET_1_HIT') {
+            if (s.type === 'BUY' && s.ltp >= s.target2) {
+              finalStatus = 'TARGET_2_HIT';
+              finalStatusText = '🎯 Target 2 Hit (Live)';
+              resDate = 'Live (Today)';
+              resPrice = s.ltp;
+            } else if (s.type === 'SELL' && s.ltp <= s.target2) {
+              finalStatus = 'TARGET_2_HIT';
+              finalStatusText = '🎯 Target 2 Hit (Live)';
+              resDate = 'Live (Today)';
+              resPrice = s.ltp;
+            }
+          }
         }
+
+        s.status = finalStatus;
+        s.statusText = finalStatusText;
+        if (resDate) s.resolvedDate = resDate;
+        if (resPrice) s.resolvedPrice = resPrice;
       }
     }
   }
   return signals;
+}
+
+// Backward compatibility alias
+function enrichAaaSignalsWithLiveQuotes(signals) {
+  return enrichAaaSignalsWithMultiDayCandles(signals);
 }
 
 async function getTradejiniAaaScreener(days = 1, minTrend = 3, requestedDate = null) {
@@ -2700,8 +2803,11 @@ async function getTradejiniAaaScreener(days = 1, minTrend = 3, requestedDate = n
     }
 
     const sigs = (sessionData && Array.isArray(sessionData.signals)) ? sessionData.signals : [];
-    enrichAaaSignalsWithLiveQuotes(sigs);
+    await enrichAaaSignalsWithMultiDayCandles(sigs);
     sigs.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+
+    // Persist re-evaluated signals and truthful stats
+    saveAaaSession(cleanReqDate, sigs, (sessionData && sessionData.totalScanned) || 189);
 
     return {
       s: 'ok',
@@ -2775,8 +2881,8 @@ async function getTradejiniAaaScreener(days = 1, minTrend = 3, requestedDate = n
     }
   }
 
-  // Sort newest daily setups first
-  enrichAaaSignalsWithLiveQuotes(dedupedRows);
+  // Sort newest daily setups first and enrich with multi-day resolution
+  await enrichAaaSignalsWithMultiDayCandles(dedupedRows);
   dedupedRows.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
 
   const nowIst = formatIst(Date.now());
@@ -2793,6 +2899,14 @@ async function getTradejiniAaaScreener(days = 1, minTrend = 3, requestedDate = n
     totalScanned: Math.max(scannedCount, scanSymbols.length),
     warmedCount: scannedCount,
     foundCount: dedupedRows.length,
+    stats: {
+      total: dedupedRows.length,
+      buy: dedupedRows.filter(r => r.type === 'BUY').length,
+      sell: dedupedRows.filter(r => r.type === 'SELL').length,
+      active: dedupedRows.filter(r => r.status === 'ACTIVE').length,
+      targets: dedupedRows.filter(r => r.status === 'TARGET_1_HIT' || r.status === 'TARGET_2_HIT').length,
+      stopLosses: dedupedRows.filter(r => r.status === 'SL_HIT').length
+    },
     rows: dedupedRows,
     source: 'Tradejini & DhanHQ v2 Live Daily (1D) AAA Engine'
   };

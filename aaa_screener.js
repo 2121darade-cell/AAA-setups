@@ -300,6 +300,22 @@ const AAAScreenerModule = (function () {
           if (elSell) elSell.textContent = tjData.rows.filter(s => s.type === 'SELL').length;
           if (elTime) elTime.textContent = tjData.updatedAt || new Date().toLocaleTimeString('en-IN');
 
+          // Update session outcome stats
+          const st = tjData.stats || {
+            total: tjData.rows.length,
+            active: tjData.rows.filter(s => s.status === 'ACTIVE').length,
+            targets: tjData.rows.filter(s => s.status === 'TARGET_1_HIT' || s.status === 'TARGET_2_HIT').length,
+            stopLosses: tjData.rows.filter(s => s.status === 'SL_HIT').length
+          };
+          const elSStatTot = document.getElementById('aaaStatTotal');
+          const elSStatAct = document.getElementById('aaaStatActive');
+          const elSStatTgt = document.getElementById('aaaStatTargets');
+          const elSStatSl = document.getElementById('aaaStatSl');
+          if (elSStatTot) elSStatTot.textContent = st.total;
+          if (elSStatAct) elSStatAct.textContent = st.active;
+          if (elSStatTgt) elSStatTgt.textContent = st.targets;
+          if (elSStatSl) elSStatSl.textContent = st.stopLosses;
+
           if (tjData.sessionDate) {
             const dtEl = document.getElementById('aaaSessionDateText');
             if (dtEl) {
@@ -473,6 +489,31 @@ const AAAScreenerModule = (function () {
     updateModalSubtitle(s);
     modal.classList.add('active');
     setTimeout(() => drawCandlestickModal(s), 50);
+
+    // Fetch full 60-day daily candles so subsequent trading days & today are visible
+    fetch(`./api/tradejini/candles?symbol=${encodeURIComponent(s.symbol)}&interval=D&days=60`)
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (data && data.s === 'ok' && Array.isArray(data.candles) && data.candles.length > 0) {
+          const dailyCandles = data.candles;
+          const sigDateClean = String(s.date || '').replace(/\s*\(1D\)/i, '').replace(/_/g, ' ').trim();
+          const sigIdx = dailyCandles.findIndex(c => {
+            const d1 = String(c.fullDate || '').trim();
+            const d2 = String(c.date || '').trim();
+            return d1 === sigDateClean || d2 === sigDateClean || sigDateClean.includes(d1) || sigDateClean.includes(d2);
+          });
+          if (sigIdx !== -1) {
+            const sliceStart = Math.max(0, sigIdx - 14);
+            const sliceEnd = Math.min(dailyCandles.length, sigIdx + 15);
+            s.candles = dailyCandles.slice(sliceStart, sliceEnd);
+            s.signalOffsetFromEnd = (s.candles.length - 1) - (sigIdx - sliceStart);
+            if (currentChartData && currentChartData.id === s.id) {
+              drawCandlestickModal(s);
+            }
+          }
+        }
+      })
+      .catch(() => {});
   }
 
   function closeChartModal() {
@@ -592,6 +633,24 @@ const AAAScreenerModule = (function () {
         ctx.font = i === sigIdx ? 'bold 10px sans-serif' : '10px sans-serif';
         ctx.textAlign = 'center';
         ctx.fillText(c.date || `C${i}`, x, height - margin.bottom + 16);
+      }
+
+      // Resolution Marker (if trade resolved on this candle)
+      if (s.resolvedDate && (c.date === s.resolvedDate || c.fullDate === s.resolvedDate || String(s.resolvedDate).includes(c.date))) {
+        ctx.save();
+        ctx.textAlign = 'center';
+        ctx.font = 'bold 10px sans-serif';
+        if (s.status === 'SL_HIT') {
+          ctx.fillStyle = '#ef4444';
+          ctx.fillText('🛑 SL Hit', x, yH - 12);
+        } else if (s.status === 'TARGET_2_HIT') {
+          ctx.fillStyle = '#047857';
+          ctx.fillText('🎯 T2 Hit', x, yH - 12);
+        } else if (s.status === 'TARGET_1_HIT') {
+          ctx.fillStyle = '#059669';
+          ctx.fillText('✅ T1 Hit', x, yH - 12);
+        }
+        ctx.restore();
       }
     });
 
@@ -800,49 +859,52 @@ const AAAScreenerModule = (function () {
   function onTick(tick) {
     if (!tick || !tick.symbol || !tick.price) return;
     const sym = tick.symbol.toUpperCase().trim();
+    const canon = (tick.canonicalSymbol || '').toUpperCase().trim();
     const price = Number(tick.price);
     if (!price || isNaN(price)) return;
 
+    const cleanStr = (s) => String(s || '').toUpperCase().replace(/[\s\-_.]/g, '');
+    const tickClean = cleanStr(sym);
+    const canonClean = cleanStr(canon);
+
     let hasMatches = false;
     for (const s of allSignals) {
-      if (s.symbol && s.symbol.toUpperCase().trim() === sym) {
+      if (!s || !s.symbol) continue;
+      const sClean = cleanStr(s.symbol);
+      if (sClean === tickClean || (canonClean && sClean === canonClean)) {
         s.ltp = price;
         if (tick.changePercent != null) s.changePercent = tick.changePercent;
 
-        // Dynamically re-evaluate target/SL status
-        if (s.type === 'BUY') {
-          if (s.stopLoss && price <= s.stopLoss) {
-            s.status = 'SL_HIT';
-            s.statusText = 'Stop Loss Hit';
-          } else if (s.target2 && price >= s.target2) {
-            s.status = 'TARGET_2_HIT';
-            s.statusText = 'Target 2 Hit (1:2.5)';
-          } else if (s.target1 && price >= s.target1) {
-            s.status = 'TARGET_1_HIT';
-            s.statusText = 'Target 1 Hit (1:1.5)';
-          } else {
-            s.status = 'ACTIVE';
-            s.statusText = 'Active (Live)';
-          }
-        } else if (s.type === 'SELL') {
-          if (s.stopLoss && price >= s.stopLoss) {
-            s.status = 'SL_HIT';
-            s.statusText = 'Stop Loss Hit';
-          } else if (s.target2 && price <= s.target2) {
-            s.status = 'TARGET_2_HIT';
-            s.statusText = 'Target 2 Hit (1:2.5)';
-          } else if (s.target1 && price <= s.target1) {
-            s.status = 'TARGET_1_HIT';
-            s.statusText = 'Target 1 Hit (1:1.5)';
-          } else {
-            s.status = 'ACTIVE';
-            s.statusText = 'Active (Live)';
+        // Never overwrite if trade is already resolved (SL_HIT or TARGET_2_HIT)
+        if (s.status !== 'SL_HIT' && s.status !== 'TARGET_2_HIT') {
+          if (s.type === 'BUY') {
+            if (s.stopLoss && price <= s.stopLoss && s.status !== 'TARGET_1_HIT') {
+              s.status = 'SL_HIT';
+              s.statusText = '🛑 Stop Loss Hit (Live)';
+            } else if (s.target2 && price >= s.target2) {
+              s.status = 'TARGET_2_HIT';
+              s.statusText = '🎯 Target 2 Hit (Live)';
+            } else if (s.target1 && price >= s.target1 && s.status === 'ACTIVE') {
+              s.status = 'TARGET_1_HIT';
+              s.statusText = '✅ Target 1 Hit (Live)';
+            }
+          } else if (s.type === 'SELL') {
+            if (s.stopLoss && price >= s.stopLoss && s.status !== 'TARGET_1_HIT') {
+              s.status = 'SL_HIT';
+              s.statusText = '🛑 Stop Loss Hit (Live)';
+            } else if (s.target2 && price <= s.target2) {
+              s.status = 'TARGET_2_HIT';
+              s.statusText = '🎯 Target 2 Hit (Live)';
+            } else if (s.target1 && price <= s.target1 && s.status === 'ACTIVE') {
+              s.status = 'TARGET_1_HIT';
+              s.statusText = '✅ Target 1 Hit (Live)';
+            }
           }
         }
         hasMatches = true;
 
         // Update DOM elements for this symbol
-        const ltpBadges = document.querySelectorAll(`.aaa-ltp-${sym}`);
+        const ltpBadges = document.querySelectorAll(`.aaa-ltp-${s.symbol}`);
         const isUp = (s.type === 'BUY' && price >= s.entry) || (s.type === 'SELL' && price <= s.entry);
         ltpBadges.forEach(el => {
           el.textContent = `(LTP: ₹${price.toFixed(2)})`;
@@ -852,7 +914,7 @@ const AAAScreenerModule = (function () {
           el.classList.add('aaa-price-flash');
         });
 
-        const statusBadges = document.querySelectorAll(`.aaa-status-${sym}`);
+        const statusBadges = document.querySelectorAll(`.aaa-status-${s.symbol}`);
         statusBadges.forEach(el => {
           el.textContent = s.statusText || s.status;
           el.style.cssText = `font-size:10px; font-weight:700; padding:2px 6px; border-radius:4px; ${getStatusBadgeStyle(s.status)}`;
@@ -861,10 +923,13 @@ const AAAScreenerModule = (function () {
     }
 
     // If modal is currently open and viewing this symbol, update modal subtitle and canvas
-    if (currentChartData && currentChartData.symbol && currentChartData.symbol.toUpperCase().trim() === sym) {
-      currentChartData.ltp = price;
-      updateModalSubtitle(currentChartData);
-      drawCandlestickModal(currentChartData);
+    if (currentChartData && currentChartData.symbol) {
+      const curClean = cleanStr(currentChartData.symbol);
+      if (curClean === tickClean || (canonClean && curClean === canonClean)) {
+        currentChartData.ltp = price;
+        updateModalSubtitle(currentChartData);
+        drawCandlestickModal(currentChartData);
+      }
     }
   }
 
