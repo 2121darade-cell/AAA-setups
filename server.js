@@ -1989,48 +1989,130 @@ async function getTradejiniTradeSetup(requestedDate = null) {
 // Bearish Engulfing, Bullish Engulfing, Bearish Piercing, Bullish Piercing,
 // Morning Star, and Evening Star
 // ============================================================================
-function evaluateDailySignalStatus(type, entry, sl, tgt1, tgt2, dailyCandles, signalIdx, liveLtp) {
-  let status = 'ACTIVE';
-  let statusText = '🟢 ट्रेड चालू (Active)';
+function evaluateDailySignalStatus(type, triggerLevel, sl, tgt1, tgt2, dailyCandles, signalIdx, liveLtp) {
+  // If signal is on the latest bar, there are no future completed daily candles
+  if (signalIdx >= dailyCandles.length - 1) {
+    if (liveLtp && liveLtp > 0) {
+      if (type === 'BUY') {
+        if (liveLtp >= triggerLevel) {
+          if (liveLtp >= tgt2) return { status: 'TARGET_2_HIT', statusText: '🎯 टार्गेट २ पूर्ण (Live)', resolvedDate: 'Live (Today)', resolvedPrice: liveLtp };
+          if (liveLtp >= tgt1) return { status: 'TARGET_1_HIT', statusText: '✅ टार्गेट १ पूर्ण (Live)', resolvedDate: 'Live (Today)', resolvedPrice: liveLtp };
+          if (liveLtp <= sl) return { status: 'SL_HIT', statusText: '🛑 स्टॉप लॉस हिट (Live)', resolvedDate: 'Live (Today)', resolvedPrice: liveLtp };
+          return { status: 'TRIGGERED', statusText: '🟢 ट्रिगर झाला (Active)' };
+        }
+        if (liveLtp <= sl) return { status: 'EXPIRED', statusText: '⚪ ट्रिगर झाला नाही / रद्द', resolvedDate: 'Live (Today)', resolvedPrice: liveLtp };
+      } else {
+        if (liveLtp <= triggerLevel) {
+          if (liveLtp <= tgt2) return { status: 'TARGET_2_HIT', statusText: '🎯 टार्गेट २ पूर्ण (Live)', resolvedDate: 'Live (Today)', resolvedPrice: liveLtp };
+          if (liveLtp <= tgt1) return { status: 'TARGET_1_HIT', statusText: '✅ टार्गेट १ पूर्ण (Live)', resolvedDate: 'Live (Today)', resolvedPrice: liveLtp };
+          if (liveLtp >= sl) return { status: 'SL_HIT', statusText: '🛑 स्टॉप लॉस हिट (Live)', resolvedDate: 'Live (Today)', resolvedPrice: liveLtp };
+          return { status: 'TRIGGERED', statusText: '🟢 ट्रिगर झाला (Active)' };
+        }
+        if (liveLtp >= sl) return { status: 'EXPIRED', statusText: '⚪ ट्रिगर झाला नाही / रद्द', resolvedDate: 'Live (Today)', resolvedPrice: liveLtp };
+      }
+    }
+    return { status: 'AWAITING_TRIGGER', statusText: '⏳ ट्रिगरची प्रतीक्षा (Awaiting Trigger)' };
+  }
+
+  let triggered = false;
+  let status = 'AWAITING_TRIGGER';
+  let statusText = '⏳ ट्रिगरची प्रतीक्षा (Awaiting Trigger)';
+  let resolvedDate = null;
+  let resolvedPrice = null;
 
   for (let k = signalIdx + 1; k < dailyCandles.length; k++) {
     const bar = dailyCandles[k];
-    if (type === 'BUY') {
-      if (bar.low <= sl) {
-        return { status: 'SL_HIT', statusText: '🛑 स्टॉप लॉस हिट (SL Hit)' };
+    const barDate = bar.fullDate || bar.date;
+
+    if (!triggered) {
+      if (type === 'BUY') {
+        if (bar.high >= triggerLevel) {
+          triggered = true;
+          status = 'TRIGGERED';
+          statusText = `🟢 ट्रिगर झाला (${barDate})`;
+        } else if (bar.low <= sl) {
+          return { status: 'EXPIRED', statusText: `⚪ ट्रिगर झाला नाही (${barDate})`, resolvedDate: barDate, resolvedPrice: bar.low };
+        }
+      } else {
+        if (bar.low <= triggerLevel) {
+          triggered = true;
+          status = 'TRIGGERED';
+          statusText = `🟢 ट्रिगर झाला (${barDate})`;
+        } else if (bar.high >= sl) {
+          return { status: 'EXPIRED', statusText: `⚪ ट्रिगर झाला नाही (${barDate})`, resolvedDate: barDate, resolvedPrice: bar.high };
+        }
       }
-      if (bar.high >= tgt2) {
-        status = 'TARGET_2_HIT';
-        statusText = '🎯 टार्गेट २ पूर्ण (Target 2 Hit)';
-      } else if (bar.high >= tgt1 && status !== 'TARGET_2_HIT') {
-        status = 'TARGET_1_HIT';
-        statusText = '✅ टार्गेट १ पूर्ण (Target 1 Hit)';
-      }
-    } else {
-      if (bar.high >= sl) {
-        return { status: 'SL_HIT', statusText: '🛑 स्टॉप लॉस हिट (SL Hit)' };
-      }
-      if (bar.low <= tgt2) {
-        status = 'TARGET_2_HIT';
-        statusText = '🎯 टार्गेट २ पूर्ण (Target 2 Hit)';
-      } else if (bar.low <= tgt1 && status !== 'TARGET_2_HIT') {
-        status = 'TARGET_1_HIT';
-        statusText = '✅ टार्गेट १ पूर्ण (Target 1 Hit)';
+    }
+
+    if (triggered) {
+      if (type === 'BUY') {
+        if (bar.high >= tgt2) {
+          return { status: 'TARGET_2_HIT', statusText: `🎯 टार्गेट २ पूर्ण (${barDate})`, resolvedDate: barDate, resolvedPrice: bar.high };
+        }
+        if (bar.high >= tgt1 && status !== 'TARGET_2_HIT') {
+          status = 'TARGET_1_HIT';
+          statusText = `✅ टार्गेट १ पूर्ण (${barDate})`;
+          resolvedDate = barDate;
+          resolvedPrice = bar.high;
+        }
+        if (bar.low <= sl) {
+          if (status === 'TARGET_1_HIT') {
+            return { status: 'TARGET_1_HIT', statusText: `✅ टार्गेट १ पूर्ण (${resolvedDate || barDate})`, resolvedDate: resolvedDate || barDate, resolvedPrice };
+          }
+          return { status: 'SL_HIT', statusText: `🛑 स्टॉप लॉस हिट (${barDate})`, resolvedDate: barDate, resolvedPrice: bar.low };
+        }
+      } else {
+        if (bar.low <= tgt2) {
+          return { status: 'TARGET_2_HIT', statusText: `🎯 टार्गेट २ पूर्ण (${barDate})`, resolvedDate: barDate, resolvedPrice: bar.low };
+        }
+        if (bar.low <= tgt1 && status !== 'TARGET_2_HIT') {
+          status = 'TARGET_1_HIT';
+          statusText = `✅ टार्गेट १ पूर्ण (${barDate})`;
+          resolvedDate = barDate;
+          resolvedPrice = bar.low;
+        }
+        if (bar.high >= sl) {
+          if (status === 'TARGET_1_HIT') {
+            return { status: 'TARGET_1_HIT', statusText: `✅ टार्गेट १ पूर्ण (${resolvedDate || barDate})`, resolvedDate: resolvedDate || barDate, resolvedPrice };
+          }
+          return { status: 'SL_HIT', statusText: `🛑 स्टॉप लॉस हिट (${barDate})`, resolvedDate: barDate, resolvedPrice: bar.high };
+        }
       }
     }
   }
 
-  if (type === 'BUY') {
-    if (liveLtp <= sl) return { status: 'SL_HIT', statusText: '🛑 स्टॉप लॉस हिट (SL Hit)' };
-    if (liveLtp >= tgt2) return { status: 'TARGET_2_HIT', statusText: '🎯 टार्गेट २ पूर्ण (Target 2 Hit)' };
-    if (liveLtp >= tgt1 && status === 'ACTIVE') return { status: 'TARGET_1_HIT', statusText: '✅ टार्गेट १ पूर्ण (Target 1 Hit)' };
-  } else {
-    if (liveLtp >= sl) return { status: 'SL_HIT', statusText: '🛑 स्टॉप लॉस हिट (SL Hit)' };
-    if (liveLtp <= tgt2) return { status: 'TARGET_2_HIT', statusText: '🎯 टार्गेट २ पूर्ण (Target 2 Hit)' };
-    if (liveLtp <= tgt1 && status === 'ACTIVE') return { status: 'TARGET_1_HIT', statusText: '✅ टार्गेट १ पूर्ण (Target 1 Hit)' };
+  // Live tick check if still running
+  if (liveLtp && liveLtp > 0) {
+    if (!triggered) {
+      if (type === 'BUY') {
+        if (liveLtp >= triggerLevel) {
+          status = 'TRIGGERED';
+          statusText = '🟢 ट्रिगर झाला (Live)';
+        } else if (liveLtp <= sl) {
+          return { status: 'EXPIRED', statusText: '⚪ ट्रिगर झाला नाही / रद्द', resolvedDate: 'Live (Today)', resolvedPrice: liveLtp };
+        }
+      } else {
+        if (liveLtp <= triggerLevel) {
+          status = 'TRIGGERED';
+          statusText = '🟢 ट्रिगर झाला (Live)';
+        } else if (liveLtp >= sl) {
+          return { status: 'EXPIRED', statusText: '⚪ ट्रिगर झाला नाही / रद्द', resolvedDate: 'Live (Today)', resolvedPrice: liveLtp };
+        }
+      }
+    } else {
+      if (type === 'BUY') {
+        if (liveLtp >= tgt2) return { status: 'TARGET_2_HIT', statusText: '🎯 टार्गेट २ पूर्ण (Live)', resolvedDate: 'Live (Today)', resolvedPrice: liveLtp };
+        if (liveLtp >= tgt1 && status === 'TRIGGERED') return { status: 'TARGET_1_HIT', statusText: '✅ टार्गेट १ पूर्ण (Live)', resolvedDate: 'Live (Today)', resolvedPrice: liveLtp };
+        if (liveLtp <= sl && status === 'TRIGGERED') return { status: 'SL_HIT', statusText: '🛑 स्टॉप लॉस हिट (Live)', resolvedDate: 'Live (Today)', resolvedPrice: liveLtp };
+      } else {
+        if (liveLtp <= tgt2) return { status: 'TARGET_2_HIT', statusText: '🎯 टार्गेट २ पूर्ण (Live)', resolvedDate: 'Live (Today)', resolvedPrice: liveLtp };
+        if (liveLtp <= tgt1 && status === 'TRIGGERED') return { status: 'TARGET_1_HIT', statusText: '✅ टार्गेट १ पूर्ण (Live)', resolvedDate: 'Live (Today)', resolvedPrice: liveLtp };
+        if (liveLtp >= sl && status === 'TRIGGERED') return { status: 'SL_HIT', statusText: '🛑 स्टॉप लॉस हिट (Live)', resolvedDate: 'Live (Today)', resolvedPrice: liveLtp };
+      }
+    }
   }
 
-  return { status, statusText };
+  return { status, statusText, resolvedDate, resolvedPrice };
 }
 
 function scanDailyCandlesForAaa(sym, dailyCandles, minTrend = 3, lookbackDays = 10, targetEndIdx = null) {
@@ -2142,54 +2224,43 @@ function scanDailyCandlesForAaa(sym, dailyCandles, minTrend = 3, lookbackDays = 
     if (isCurrRed && isPrevGreen && greenTrend >= minTrend) {
       let pattern = null;
       const prevMid = (cPrev.open + cPrev.close) / 2;
-      const isStrongMother = (prevBody / prevRange) >= 0.45;
-      const isHaramiMother = (prevBody / prevRange) >= 0.50;
-      const isMeaningfulPrev = (prevBody / prevRange) >= 0.30;
-      const isStrongCurr = (currBody / currRange) >= 0.50;
+      const isStrongMother = (prevBody / prevRange) >= 0.40;
 
+      // 1. Bearish Harami: Baby real body inside Mother real body, baby high/low inside Mother range
       if (
-        isHaramiMother &&
-        cCurr.open < cPrev.close &&
-        cCurr.close > cPrev.open &&
-        cCurr.high < cPrev.high &&
-        cCurr.low >= cPrev.open &&
-        cCurr.low > cPrev.low &&
-        currBody <= prevBody * 0.60 &&
-        currBody >= prevBody * 0.12 &&
-        (currBody / currRange) >= 0.30
+        isStrongMother &&
+        cCurr.open <= cPrev.close &&
+        cCurr.close >= cPrev.open &&
+        cCurr.high <= cPrev.high &&
+        cCurr.low >= cPrev.low &&
+        currBody <= prevBody * 0.70
       ) {
         pattern = 'Bearish Harami';
       } else if (
         isStrongMother &&
-        isStrongCurr &&
-        cCurr.open > cPrev.close &&
+        (currBody / currRange) >= 0.40 &&
+        cCurr.open >= cPrev.close * 0.999 &&
         cCurr.close < prevMid &&
         cCurr.close > cPrev.open
       ) {
         pattern = 'Bearish Piercing';
       } else if (
-        isMeaningfulPrev &&
-        isStrongCurr &&
         cCurr.open >= cPrev.close &&
         cCurr.close <= cPrev.open &&
-        (cCurr.open > cPrev.close || cCurr.close < cPrev.open) &&
-        cCurr.high >= cPrev.high &&
-        cCurr.low <= cPrev.low &&
-        currBody >= prevBody * 1.15
+        currBody >= prevBody * 1.05
       ) {
         pattern = 'Bearish Engulfing';
       }
 
       if (pattern) {
-        const entry = round2(cCurr.close);
-        const rawSl = pattern === 'Bearish Harami'
-          ? round2(cPrev.high)
-          : round2(Math.max(cPrev.high, cCurr.high));
-        const stopLoss = rawSl > entry ? rawSl : round2(entry + Math.max(entry * 0.002, 0.5));
-        const risk = round2(stopLoss - entry);
-        const target1 = round2(entry - risk * 1.5);
-        const target2 = round2(entry - risk * 2.5);
-        const st = evaluateDailySignalStatus('SELL', entry, stopLoss, target1, target2, dailyCandles, i, latestClose);
+        const close = round2(cCurr.close);
+        const triggerLevel = round2(cCurr.low);
+        const entry = triggerLevel;
+        const stopLoss = round2(Math.max(cPrev.high, cCurr.high));
+        const risk = round2(Math.max(stopLoss - triggerLevel, Math.max(triggerLevel * 0.002, 0.5)));
+        const target1 = round2(triggerLevel - risk * 1.5);
+        const target2 = round2(triggerLevel - risk * 2.5);
+        const st = evaluateDailySignalStatus('SELL', triggerLevel, stopLoss, target1, target2, dailyCandles, i, latestClose);
         const sliceStart = Math.max(0, i - 14);
         const sliceEnd = Math.min(n, i + 4);
 
@@ -2206,6 +2277,9 @@ function scanDailyCandlesForAaa(sym, dailyCandles, minTrend = 3, lookbackDays = 
           trend: `${greenTrend} Green Days`,
           date: `${cCurr.fullDate} (1D)`,
           timestamp: cCurr.timestamp || 0,
+          triggerLevel,
+          triggerCondition: `विक्री < ₹${triggerLevel}`,
+          close,
           entry,
           stopLoss,
           target1,
@@ -2214,6 +2288,8 @@ function scanDailyCandlesForAaa(sym, dailyCandles, minTrend = 3, lookbackDays = 
           ltp: latestClose,
           status: st.status,
           statusText: st.statusText,
+          resolvedDate: st.resolvedDate || null,
+          resolvedPrice: st.resolvedPrice || null,
           ohlcSummary: `Mother (${cPrev.date}): O:₹${cPrev.open} H:₹${cPrev.high} L:₹${cPrev.low} C:₹${cPrev.close} → Signal (${cCurr.date}): O:₹${cCurr.open} H:₹${cCurr.high} L:₹${cCurr.low} C:₹${cCurr.close}`,
           candles: dailyCandles.slice(sliceStart, sliceEnd),
           source: 'Tradejini Daily (1D) Scanner'
@@ -2224,73 +2300,47 @@ function scanDailyCandlesForAaa(sym, dailyCandles, minTrend = 3, lookbackDays = 
 
     // ------------------------------------------------------------------------
     // B. 2-CANDLE BUY SETUPS (After Downtrend on Daily 1D)
-    //    1. Bullish Harami (Standard Strategy Rule):
-    //       - Downtrend -> Strong Red Mother candle (body >= 50% of its High-Low range)
-    //       - Clean Green Baby candle (body <= 60% of Mother body, >= 30% of its own range)
-    //       - Baby body strictly inside Mother body (cCurr.open > cPrev.close && cCurr.close < cPrev.open)
-    //       - Baby wicks strictly inside Mother High/Low & Open (cCurr.high <= cPrev.open && cCurr.high < cPrev.high && cCurr.low > cPrev.low)
-    //       - Entry (Buy) = cCurr.close | SL = cPrev.low
-    //    2. Bullish Piercing (Standard Strategy Rule):
-    //       - Downtrend -> Strong Red candle (body >= 45% of range)
-    //       - Strong Green candle opens below Red close (cCurr.open < cPrev.close)
-    //         and closes above 50% midpoint of Red body (cCurr.close > prevMid && cCurr.close < cPrev.open)
-    //       - Entry (Buy) = cCurr.close | SL = Math.min(cCurr.low, cPrev.low)
-    //    3. Bullish Engulfing (Standard Strategy Rule):
-    //       - Downtrend -> Red candle (body >= 30% of range)
-    //       - Larger Green candle (body >= 50% of range) completely engulfs Red body
-    //       - Entry (Buy) = cCurr.close | SL = Math.min(cCurr.low, cPrev.low)
     // ------------------------------------------------------------------------
     if (isCurrGreen && isPrevRed && redTrend >= minTrend) {
       let pattern = null;
       const prevMid = (cPrev.open + cPrev.close) / 2;
-      const isStrongMother = (prevBody / prevRange) >= 0.45;
-      const isHaramiMother = (prevBody / prevRange) >= 0.50;
-      const isMeaningfulPrev = (prevBody / prevRange) >= 0.30;
-      const isStrongCurr = (currBody / currRange) >= 0.50;
+      const isStrongMother = (prevBody / prevRange) >= 0.40;
 
+      // 1. Bullish Harami: Baby real body inside Mother real body, baby high/low inside Mother range
       if (
-        isHaramiMother &&
-        cCurr.open > cPrev.close &&
-        cCurr.close < cPrev.open &&
-        cCurr.high <= cPrev.open &&
-        cCurr.high < cPrev.high &&
-        cCurr.low > cPrev.low &&
-        currBody <= prevBody * 0.60 &&
-        currBody >= prevBody * 0.12 &&
-        (currBody / currRange) >= 0.30
+        isStrongMother &&
+        cCurr.open >= cPrev.close &&
+        cCurr.close <= cPrev.open &&
+        cCurr.high <= cPrev.high &&
+        cCurr.low >= cPrev.low &&
+        currBody <= prevBody * 0.70
       ) {
         pattern = 'Bullish Harami';
       } else if (
         isStrongMother &&
-        isStrongCurr &&
-        cCurr.open < cPrev.close &&
+        (currBody / currRange) >= 0.40 &&
+        cCurr.open <= cPrev.close * 1.001 &&
         cCurr.close > prevMid &&
         cCurr.close < cPrev.open
       ) {
         pattern = 'Bullish Piercing';
       } else if (
-        isMeaningfulPrev &&
-        isStrongCurr &&
         cCurr.open <= cPrev.close &&
         cCurr.close >= cPrev.open &&
-        (cCurr.open < cPrev.close || cCurr.close > cPrev.open) &&
-        cCurr.high >= cPrev.high &&
-        cCurr.low <= cPrev.low &&
-        currBody >= prevBody * 1.15
+        currBody >= prevBody * 1.05
       ) {
         pattern = 'Bullish Engulfing';
       }
 
       if (pattern) {
-        const entry = round2(cCurr.close);
-        const rawSl = pattern === 'Bullish Harami'
-          ? round2(cPrev.low)
-          : round2(Math.min(cPrev.low, cCurr.low));
-        const stopLoss = rawSl < entry ? rawSl : round2(entry - Math.max(entry * 0.002, 0.5));
-        const risk = round2(entry - stopLoss);
-        const target1 = round2(entry + risk * 1.5);
-        const target2 = round2(entry + risk * 2.5);
-        const st = evaluateDailySignalStatus('BUY', entry, stopLoss, target1, target2, dailyCandles, i, latestClose);
+        const close = round2(cCurr.close);
+        const triggerLevel = round2(cCurr.high);
+        const entry = triggerLevel;
+        const stopLoss = round2(Math.min(cPrev.low, cCurr.low));
+        const risk = round2(Math.max(triggerLevel - stopLoss, Math.max(triggerLevel * 0.002, 0.5)));
+        const target1 = round2(triggerLevel + risk * 1.5);
+        const target2 = round2(triggerLevel + risk * 2.5);
+        const st = evaluateDailySignalStatus('BUY', triggerLevel, stopLoss, target1, target2, dailyCandles, i, latestClose);
         const sliceStart = Math.max(0, i - 14);
         const sliceEnd = Math.min(n, i + 4);
 
@@ -2307,6 +2357,9 @@ function scanDailyCandlesForAaa(sym, dailyCandles, minTrend = 3, lookbackDays = 
           trend: `${redTrend} Red Days`,
           date: `${cCurr.fullDate} (1D)`,
           timestamp: cCurr.timestamp || 0,
+          triggerLevel,
+          triggerCondition: `खरेदी > ₹${triggerLevel}`,
+          close,
           entry,
           stopLoss,
           target1,
@@ -2315,6 +2368,8 @@ function scanDailyCandlesForAaa(sym, dailyCandles, minTrend = 3, lookbackDays = 
           ltp: latestClose,
           status: st.status,
           statusText: st.statusText,
+          resolvedDate: st.resolvedDate || null,
+          resolvedPrice: st.resolvedPrice || null,
           ohlcSummary: `Mother (${cPrev.date}): O:₹${cPrev.open} H:₹${cPrev.high} L:₹${cPrev.low} C:₹${cPrev.close} → Signal (${cCurr.date}): O:₹${cCurr.open} H:₹${cCurr.high} L:₹${cCurr.low} C:₹${cCurr.close}`,
           candles: dailyCandles.slice(sliceStart, sliceEnd),
           source: 'Tradejini Daily (1D) Scanner'
@@ -2325,28 +2380,12 @@ function scanDailyCandlesForAaa(sym, dailyCandles, minTrend = 3, lookbackDays = 
 
     // ------------------------------------------------------------------------
     // C. 3-CANDLE MORNING STAR & EVENING STAR (Standard Strategy Rule - Daily 1D)
-    //    - Morning Star:
-    //      1. Forms after a Downtrend; Candle 1 (cFirst) is a strong Red candle (body >= 45% of range)
-    //      2. Candle 2 (cPrev / Star, Red or Green): Small body (<= 35% of Candle 1 body),
-    //         BOTH open and close are strictly below Candle 1's close (starTop < cFirst.close),
-    //         and forms the lowest low (cPrev.low <= cFirst.low && cPrev.low <= cCurr.low)
-    //      3. Candle 3 (cCurr): Strong Green candle whose close is > 50% of Candle 1's body
-    //         (cCurr.close > (cFirst.open + cFirst.close) / 2)
-    //    - Evening Star:
-    //      1. Forms after an Uptrend; Candle 1 (cFirst) is a strong Green candle (body >= 45% of range)
-    //      2. Candle 2 (cPrev / Star, Red or Green): Small body (<= 35% of Candle 1 body),
-    //         BOTH open and close are strictly above Candle 1's close (starBottom > cFirst.close),
-    //         and forms the highest high (cPrev.high >= cFirst.high && cPrev.high >= cCurr.high)
-    //      3. Candle 3 (cCurr): Strong Red candle whose close is < 50% of Candle 1's body
-    //         (cCurr.close < (cFirst.open + cFirst.close) / 2)
     // ------------------------------------------------------------------------
     if (i >= minTrend + 1) {
       const cFirst = dailyCandles[i - 2];
       const firstBody = Math.abs(cFirst.close - cFirst.open);
       const firstRange = Math.max(cFirst.high - cFirst.low, 0.01);
       const starBody = prevBody;
-      const starTop = Math.max(cPrev.open, cPrev.close);
-      const starBottom = Math.min(cPrev.open, cPrev.close);
       const firstMid = (cFirst.open + cFirst.close) / 2;
 
       const redTrendStar = measureDowntrend(i - 2);
@@ -2354,23 +2393,22 @@ function scanDailyCandlesForAaa(sym, dailyCandles, minTrend = 3, lookbackDays = 
 
       if (
         cFirst.close < cFirst.open &&
-        (firstBody / firstRange) >= 0.45 &&
+        (firstBody / firstRange) >= 0.40 &&
         redTrendStar >= minTrend &&
-        starBody <= firstBody * 0.35 &&
-        starTop < cFirst.close &&
+        starBody <= firstBody * 0.40 &&
         cPrev.low <= cFirst.low &&
-        cPrev.low <= cCurr.low &&
         isCurrGreen &&
-        (currBody / currRange) >= 0.45 &&
+        (currBody / currRange) >= 0.40 &&
         cCurr.close > firstMid
       ) {
-        const entry = round2(cCurr.close);
-        const rawSl = round2(Math.min(cFirst.low, cPrev.low, cCurr.low));
-        const stopLoss = rawSl < entry ? rawSl : round2(entry - Math.max(entry * 0.002, 0.5));
-        const risk = round2(entry - stopLoss);
-        const target1 = round2(entry + risk * 1.5);
-        const target2 = round2(entry + risk * 2.5);
-        const st = evaluateDailySignalStatus('BUY', entry, stopLoss, target1, target2, dailyCandles, i, latestClose);
+        const close = round2(cCurr.close);
+        const triggerLevel = round2(cCurr.high);
+        const entry = triggerLevel;
+        const stopLoss = round2(Math.min(cFirst.low, cPrev.low, cCurr.low));
+        const risk = round2(Math.max(triggerLevel - stopLoss, Math.max(triggerLevel * 0.002, 0.5)));
+        const target1 = round2(triggerLevel + risk * 1.5);
+        const target2 = round2(triggerLevel + risk * 2.5);
+        const st = evaluateDailySignalStatus('BUY', triggerLevel, stopLoss, target1, target2, dailyCandles, i, latestClose);
         const sliceStart = Math.max(0, i - 14);
         const sliceEnd = Math.min(n, i + 4);
 
@@ -2387,6 +2425,9 @@ function scanDailyCandlesForAaa(sym, dailyCandles, minTrend = 3, lookbackDays = 
           trend: `${redTrendStar} Red Days`,
           date: `${cCurr.fullDate} (1D)`,
           timestamp: cCurr.timestamp || 0,
+          triggerLevel,
+          triggerCondition: `खरेदी > ₹${triggerLevel}`,
+          close,
           entry,
           stopLoss,
           target1,
@@ -2395,6 +2436,8 @@ function scanDailyCandlesForAaa(sym, dailyCandles, minTrend = 3, lookbackDays = 
           ltp: latestClose,
           status: st.status,
           statusText: st.statusText,
+          resolvedDate: st.resolvedDate || null,
+          resolvedPrice: st.resolvedPrice || null,
           ohlcSummary: `C1 (${cFirst.date}): O:₹${cFirst.open} C:₹${cFirst.close} → Star (${cPrev.date}): O:₹${cPrev.open} L:₹${cPrev.low} C:₹${cPrev.close} → C3 (${cCurr.date}): O:₹${cCurr.open} C:₹${cCurr.close}`,
           candles: dailyCandles.slice(sliceStart, sliceEnd),
           source: 'Tradejini Daily (1D) Scanner'
@@ -2404,23 +2447,22 @@ function scanDailyCandlesForAaa(sym, dailyCandles, minTrend = 3, lookbackDays = 
 
       if (
         cFirst.close > cFirst.open &&
-        (firstBody / firstRange) >= 0.45 &&
+        (firstBody / firstRange) >= 0.40 &&
         greenTrendStar >= minTrend &&
-        starBody <= firstBody * 0.35 &&
-        starBottom > cFirst.close &&
+        starBody <= firstBody * 0.40 &&
         cPrev.high >= cFirst.high &&
-        cPrev.high >= cCurr.high &&
         isCurrRed &&
-        (currBody / currRange) >= 0.45 &&
+        (currBody / currRange) >= 0.40 &&
         cCurr.close < firstMid
       ) {
-        const entry = round2(cCurr.close);
-        const rawSl = round2(Math.max(cFirst.high, cPrev.high, cCurr.high));
-        const stopLoss = rawSl > entry ? rawSl : round2(entry + Math.max(entry * 0.002, 0.5));
-        const risk = round2(stopLoss - entry);
-        const target1 = round2(entry - risk * 1.5);
-        const target2 = round2(entry - risk * 2.5);
-        const st = evaluateDailySignalStatus('SELL', entry, stopLoss, target1, target2, dailyCandles, i, latestClose);
+        const close = round2(cCurr.close);
+        const triggerLevel = round2(cCurr.low);
+        const entry = triggerLevel;
+        const stopLoss = round2(Math.max(cFirst.high, cPrev.high, cCurr.high));
+        const risk = round2(Math.max(stopLoss - triggerLevel, Math.max(triggerLevel * 0.002, 0.5)));
+        const target1 = round2(triggerLevel - risk * 1.5);
+        const target2 = round2(triggerLevel - risk * 2.5);
+        const st = evaluateDailySignalStatus('SELL', triggerLevel, stopLoss, target1, target2, dailyCandles, i, latestClose);
         const sliceStart = Math.max(0, i - 14);
         const sliceEnd = Math.min(n, i + 4);
 
@@ -2437,6 +2479,9 @@ function scanDailyCandlesForAaa(sym, dailyCandles, minTrend = 3, lookbackDays = 
           trend: `${greenTrendStar} Green Days`,
           date: `${cCurr.fullDate} (1D)`,
           timestamp: cCurr.timestamp || 0,
+          triggerLevel,
+          triggerCondition: `विक्री < ₹${triggerLevel}`,
+          close,
           entry,
           stopLoss,
           target1,
@@ -2445,6 +2490,8 @@ function scanDailyCandlesForAaa(sym, dailyCandles, minTrend = 3, lookbackDays = 
           ltp: latestClose,
           status: st.status,
           statusText: st.statusText,
+          resolvedDate: st.resolvedDate || null,
+          resolvedPrice: st.resolvedPrice || null,
           ohlcSummary: `C1 (${cFirst.date}): O:₹${cFirst.open} C:₹${cFirst.close} → Star (${cPrev.date}): O:₹${cPrev.open} H:₹${cPrev.high} C:₹${cPrev.close} → C3 (${cCurr.date}): O:₹${cCurr.open} C:₹${cCurr.close}`,
           candles: dailyCandles.slice(sliceStart, sliceEnd),
           source: 'Tradejini Daily (1D) Scanner'
@@ -2579,9 +2626,11 @@ async function generateHistoricalAaaSession(targetDateStr, minTrend = 3) {
       total: dedupedSignals.length,
       buy: dedupedSignals.filter(s => s.type === 'BUY').length,
       sell: dedupedSignals.filter(s => s.type === 'SELL').length,
-      active: dedupedSignals.filter(s => s.status === 'ACTIVE').length,
+      awaiting: dedupedSignals.filter(s => s.status === 'AWAITING_TRIGGER').length,
+      active: dedupedSignals.filter(s => s.status === 'TRIGGERED' || s.status === 'ACTIVE').length,
       targets: dedupedSignals.filter(s => s.status === 'TARGET_1_HIT' || s.status === 'TARGET_2_HIT').length,
-      stopLosses: dedupedSignals.filter(s => s.status === 'SL_HIT').length
+      stopLosses: dedupedSignals.filter(s => s.status === 'SL_HIT').length,
+      notTriggered: dedupedSignals.filter(s => s.status === 'EXPIRED' || s.status === 'NOT_TRIGGERED').length
     },
     signals: dedupedSignals
   };
@@ -2664,8 +2713,34 @@ async function enrichAaaSignalsWithMultiDayCandles(signals) {
         s.candles = dailyCandles.slice(sliceStart, sliceEnd);
         s.signalOffsetFromEnd = (s.candles.length - 1) - (sigIdx - sliceStart);
 
-        let finalStatus = 'ACTIVE';
-        let finalStatusText = '🟢 चालू (Active)';
+        const cCurr = dailyCandles[sigIdx];
+        const cPrev = sigIdx > 0 ? dailyCandles[sigIdx - 1] : null;
+        if (!s.triggerLevel) {
+          s.triggerLevel = round2(s.type === 'BUY' ? cCurr.high : cCurr.low);
+        }
+        s.triggerCondition = s.type === 'BUY' ? `खरेदी > ₹${s.triggerLevel}` : `विक्री < ₹${s.triggerLevel}`;
+        if (!s.close) s.close = round2(cCurr.close);
+        s.entry = s.triggerLevel;
+
+        if (cPrev) {
+          if (s.type === 'BUY') {
+            s.stopLoss = round2(Math.min(cPrev.low, cCurr.low));
+            s.risk = round2(Math.max(s.triggerLevel - s.stopLoss, Math.max(s.triggerLevel * 0.002, 0.5)));
+            s.target1 = round2(s.triggerLevel + s.risk * 1.5);
+            s.target2 = round2(s.triggerLevel + s.risk * 2.5);
+          } else {
+            s.stopLoss = round2(Math.max(cPrev.high, cCurr.high));
+            s.risk = round2(Math.max(s.stopLoss - s.triggerLevel, Math.max(s.triggerLevel * 0.002, 0.5)));
+            s.target1 = round2(s.triggerLevel - s.risk * 1.5);
+            s.target2 = round2(s.triggerLevel - s.risk * 2.5);
+          }
+        }
+
+        let isTriggered = false;
+        let trigDate = null;
+        let isExpired = false;
+        let finalStatus = 'AWAITING_TRIGGER';
+        let finalStatusText = '⏳ ट्रिगरची प्रतीक्षा (Awaiting Trigger)';
         let resDate = null;
         let resPrice = null;
 
@@ -2673,60 +2748,122 @@ async function enrichAaaSignalsWithMultiDayCandles(signals) {
           const bar = dailyCandles[k];
           const barDate = bar.fullDate || bar.date;
 
-          if (s.type === 'BUY') {
-            if (bar.low <= s.stopLoss && finalStatus === 'ACTIVE') {
-              finalStatus = 'SL_HIT';
-              finalStatusText = `🛑 SL Hit (${barDate})`;
-              resDate = barDate;
-              resPrice = bar.low;
-              break;
+          if (!isTriggered) {
+            if (s.type === 'BUY') {
+              if (bar.high >= s.triggerLevel) {
+                isTriggered = true;
+                trigDate = barDate;
+                finalStatus = 'TRIGGERED';
+                finalStatusText = `🟢 ट्रिगर झाला (${barDate})`;
+              } else if (bar.low <= s.stopLoss) {
+                isExpired = true;
+                finalStatus = 'EXPIRED';
+                finalStatusText = `⚪ ट्रिगर झाला नाही (${barDate})`;
+                resDate = barDate;
+                resPrice = bar.low;
+                break;
+              }
+            } else {
+              if (bar.low <= s.triggerLevel) {
+                isTriggered = true;
+                trigDate = barDate;
+                finalStatus = 'TRIGGERED';
+                finalStatusText = `🟢 ट्रिगर झाला (${barDate})`;
+              } else if (bar.high >= s.stopLoss) {
+                isExpired = true;
+                finalStatus = 'EXPIRED';
+                finalStatusText = `⚪ ट्रिगर झाला नाही (${barDate})`;
+                resDate = barDate;
+                resPrice = bar.high;
+                break;
+              }
             }
-            if (bar.high >= s.target2) {
-              finalStatus = 'TARGET_2_HIT';
-              finalStatusText = `🎯 Target 2 Hit (${barDate})`;
-              resDate = barDate;
-              resPrice = bar.high;
-              break;
-            }
-            if (bar.high >= s.target1 && finalStatus === 'ACTIVE') {
-              finalStatus = 'TARGET_1_HIT';
-              finalStatusText = `✅ Target 1 Hit (${barDate})`;
-              resDate = barDate;
-              resPrice = bar.high;
-            }
-          } else if (s.type === 'SELL') {
-            if (bar.high >= s.stopLoss && finalStatus === 'ACTIVE') {
-              finalStatus = 'SL_HIT';
-              finalStatusText = `🛑 SL Hit (${barDate})`;
-              resDate = barDate;
-              resPrice = bar.high;
-              break;
-            }
-            if (bar.low <= s.target2) {
-              finalStatus = 'TARGET_2_HIT';
-              finalStatusText = `🎯 Target 2 Hit (${barDate})`;
-              resDate = barDate;
-              resPrice = bar.low;
-              break;
-            }
-            if (bar.low <= s.target1 && finalStatus === 'ACTIVE') {
-              finalStatus = 'TARGET_1_HIT';
-              finalStatusText = `✅ Target 1 Hit (${barDate})`;
-              resDate = barDate;
-              resPrice = bar.low;
+          }
+
+          if (isTriggered) {
+            if (s.type === 'BUY') {
+              if (bar.high >= s.target2) {
+                finalStatus = 'TARGET_2_HIT';
+                finalStatusText = `🎯 Target 2 Hit (${barDate})`;
+                resDate = barDate;
+                resPrice = bar.high;
+                break;
+              }
+              if (bar.high >= s.target1 && finalStatus !== 'TARGET_2_HIT') {
+                finalStatus = 'TARGET_1_HIT';
+                finalStatusText = `✅ Target 1 Hit (${barDate})`;
+                resDate = barDate;
+                resPrice = bar.high;
+              }
+              if (bar.low <= s.stopLoss) {
+                if (finalStatus === 'TARGET_1_HIT') {
+                  break;
+                }
+                finalStatus = 'SL_HIT';
+                finalStatusText = `🛑 SL Hit (${barDate})`;
+                resDate = barDate;
+                resPrice = bar.low;
+                break;
+              }
+            } else {
+              if (bar.low <= s.target2) {
+                finalStatus = 'TARGET_2_HIT';
+                finalStatusText = `🎯 Target 2 Hit (${barDate})`;
+                resDate = barDate;
+                resPrice = bar.low;
+                break;
+              }
+              if (bar.low <= s.target1 && finalStatus !== 'TARGET_2_HIT') {
+                finalStatus = 'TARGET_1_HIT';
+                finalStatusText = `✅ Target 1 Hit (${barDate})`;
+                resDate = barDate;
+                resPrice = bar.low;
+              }
+              if (bar.high >= s.stopLoss) {
+                if (finalStatus === 'TARGET_1_HIT') {
+                  break;
+                }
+                finalStatus = 'SL_HIT';
+                finalStatusText = `🛑 SL Hit (${barDate})`;
+                resDate = barDate;
+                resPrice = bar.high;
+                break;
+              }
             }
           }
         }
 
+        // Live check if still pending or active
         if (s.ltp && s.ltp > 0) {
-          if (finalStatus === 'ACTIVE') {
+          if (!isTriggered && !isExpired && finalStatus === 'AWAITING_TRIGGER') {
             if (s.type === 'BUY') {
-              if (s.ltp <= s.stopLoss) {
-                finalStatus = 'SL_HIT';
-                finalStatusText = '🛑 SL Hit (Live)';
+              if (s.ltp >= s.triggerLevel) {
+                isTriggered = true;
+                finalStatus = 'TRIGGERED';
+                finalStatusText = '🟢 ट्रिगर झाला (Live)';
+              } else if (s.ltp <= s.stopLoss) {
+                finalStatus = 'EXPIRED';
+                finalStatusText = '⚪ ट्रिगर झाला नाही / रद्द';
                 resDate = 'Live (Today)';
                 resPrice = s.ltp;
-              } else if (s.ltp >= s.target2) {
+              }
+            } else {
+              if (s.ltp <= s.triggerLevel) {
+                isTriggered = true;
+                finalStatus = 'TRIGGERED';
+                finalStatusText = '🟢 ट्रिगर झाला (Live)';
+              } else if (s.ltp >= s.stopLoss) {
+                finalStatus = 'EXPIRED';
+                finalStatusText = '⚪ ट्रिगर झाला नाही / रद्द';
+                resDate = 'Live (Today)';
+                resPrice = s.ltp;
+              }
+            }
+          }
+
+          if (isTriggered && (finalStatus === 'TRIGGERED' || finalStatus === 'ACTIVE')) {
+            if (s.type === 'BUY') {
+              if (s.ltp >= s.target2) {
                 finalStatus = 'TARGET_2_HIT';
                 finalStatusText = '🎯 Target 2 Hit (Live)';
                 resDate = 'Live (Today)';
@@ -2736,14 +2873,14 @@ async function enrichAaaSignalsWithMultiDayCandles(signals) {
                 finalStatusText = '✅ Target 1 Hit (Live)';
                 resDate = 'Live (Today)';
                 resPrice = s.ltp;
-              }
-            } else if (s.type === 'SELL') {
-              if (s.ltp >= s.stopLoss) {
+              } else if (s.ltp <= s.stopLoss) {
                 finalStatus = 'SL_HIT';
                 finalStatusText = '🛑 SL Hit (Live)';
                 resDate = 'Live (Today)';
                 resPrice = s.ltp;
-              } else if (s.ltp <= s.target2) {
+              }
+            } else {
+              if (s.ltp <= s.target2) {
                 finalStatus = 'TARGET_2_HIT';
                 finalStatusText = '🎯 Target 2 Hit (Live)';
                 resDate = 'Live (Today)';
@@ -2751,6 +2888,11 @@ async function enrichAaaSignalsWithMultiDayCandles(signals) {
               } else if (s.ltp <= s.target1) {
                 finalStatus = 'TARGET_1_HIT';
                 finalStatusText = '✅ Target 1 Hit (Live)';
+                resDate = 'Live (Today)';
+                resPrice = s.ltp;
+              } else if (s.ltp >= s.stopLoss) {
+                finalStatus = 'SL_HIT';
+                finalStatusText = '🛑 SL Hit (Live)';
                 resDate = 'Live (Today)';
                 resPrice = s.ltp;
               }
@@ -2823,9 +2965,11 @@ async function getTradejiniAaaScreener(days = 1, minTrend = 3, requestedDate = n
         total: sigs.length,
         buy: sigs.filter(s => s.type === 'BUY').length,
         sell: sigs.filter(s => s.type === 'SELL').length,
-        active: sigs.filter(s => s.status === 'ACTIVE').length,
+        awaiting: sigs.filter(s => s.status === 'AWAITING_TRIGGER').length,
+        active: sigs.filter(s => s.status === 'TRIGGERED' || s.status === 'ACTIVE').length,
         targets: sigs.filter(s => s.status === 'TARGET_1_HIT' || s.status === 'TARGET_2_HIT').length,
-        stopLosses: sigs.filter(s => s.status === 'SL_HIT').length
+        stopLosses: sigs.filter(s => s.status === 'SL_HIT').length,
+        notTriggered: sigs.filter(s => s.status === 'EXPIRED' || s.status === 'NOT_TRIGGERED').length
       },
       rows: sigs,
       source: 'Tradejini & DhanHQ v2 AAA Storage'
@@ -2903,9 +3047,11 @@ async function getTradejiniAaaScreener(days = 1, minTrend = 3, requestedDate = n
       total: dedupedRows.length,
       buy: dedupedRows.filter(r => r.type === 'BUY').length,
       sell: dedupedRows.filter(r => r.type === 'SELL').length,
-      active: dedupedRows.filter(r => r.status === 'ACTIVE').length,
+      awaiting: dedupedRows.filter(r => r.status === 'AWAITING_TRIGGER').length,
+      active: dedupedRows.filter(r => r.status === 'TRIGGERED' || r.status === 'ACTIVE').length,
       targets: dedupedRows.filter(r => r.status === 'TARGET_1_HIT' || r.status === 'TARGET_2_HIT').length,
-      stopLosses: dedupedRows.filter(r => r.status === 'SL_HIT').length
+      stopLosses: dedupedRows.filter(r => r.status === 'SL_HIT').length,
+      notTriggered: dedupedRows.filter(r => r.status === 'EXPIRED' || r.status === 'NOT_TRIGGERED').length
     },
     rows: dedupedRows,
     source: 'Tradejini & DhanHQ v2 Live Daily (1D) AAA Engine'

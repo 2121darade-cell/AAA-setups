@@ -303,18 +303,24 @@ const AAAScreenerModule = (function () {
           // Update session outcome stats
           const st = tjData.stats || {
             total: tjData.rows.length,
-            active: tjData.rows.filter(s => s.status === 'ACTIVE').length,
+            awaiting: tjData.rows.filter(s => s.status === 'AWAITING_TRIGGER').length,
+            active: tjData.rows.filter(s => s.status === 'TRIGGERED' || s.status === 'ACTIVE').length,
             targets: tjData.rows.filter(s => s.status === 'TARGET_1_HIT' || s.status === 'TARGET_2_HIT').length,
-            stopLosses: tjData.rows.filter(s => s.status === 'SL_HIT').length
+            stopLosses: tjData.rows.filter(s => s.status === 'SL_HIT').length,
+            notTriggered: tjData.rows.filter(s => s.status === 'EXPIRED' || s.status === 'NOT_TRIGGERED').length
           };
           const elSStatTot = document.getElementById('aaaStatTotal');
+          const elSStatAwt = document.getElementById('aaaStatAwaiting');
           const elSStatAct = document.getElementById('aaaStatActive');
           const elSStatTgt = document.getElementById('aaaStatTargets');
           const elSStatSl = document.getElementById('aaaStatSl');
-          if (elSStatTot) elSStatTot.textContent = st.total;
-          if (elSStatAct) elSStatAct.textContent = st.active;
-          if (elSStatTgt) elSStatTgt.textContent = st.targets;
-          if (elSStatSl) elSStatSl.textContent = st.stopLosses;
+          const elSStatExp = document.getElementById('aaaStatNotTriggered');
+          if (elSStatTot) elSStatTot.textContent = st.total || 0;
+          if (elSStatAwt) elSStatAwt.textContent = st.awaiting || 0;
+          if (elSStatAct) elSStatAct.textContent = st.active || 0;
+          if (elSStatTgt) elSStatTgt.textContent = st.targets || 0;
+          if (elSStatSl) elSStatSl.textContent = st.stopLosses || 0;
+          if (elSStatExp) elSStatExp.textContent = st.notTriggered || 0;
 
           if (tjData.sessionDate) {
             const dtEl = document.getElementById('aaaSessionDateText');
@@ -350,6 +356,12 @@ const AAAScreenerModule = (function () {
     }
     if (status === 'SL_HIT') {
       return 'background:#fef2f2; color:#b91c1c; border:1px solid #fca5a5;';
+    }
+    if (status === 'AWAITING_TRIGGER') {
+      return 'background:#fef3c7; color:#b45309; border:1px solid #fde68a;';
+    }
+    if (status === 'EXPIRED' || status === 'NOT_TRIGGERED') {
+      return 'background:#f1f5f9; color:#64748b; border:1px solid #cbd5e1;';
     }
     return 'background:#eff6ff; color:#1d4ed8; border:1px solid #93c5fd;';
   }
@@ -427,6 +439,12 @@ const AAAScreenerModule = (function () {
       const btnChartText = window.I18N ? I18N.t('aaa_btn_chart') : '🔍 1D चार्ट';
       const btnLoadText = window.I18N ? I18N.t('aaa_btn_load') : '📊 लोड (1D)';
 
+      const trigVal = s.triggerLevel || s.entry;
+      const trigHtml = isBuy
+        ? `<div style="font-weight:700; color:#047857; font-size:12.5px;">खरेदी > ₹${trigVal}</div>`
+        : `<div style="font-weight:700; color:#b91c1c; font-size:12.5px;">विक्री < ₹${trigVal}</div>`;
+      const closeSub = `<div style="font-size:10.5px; color:#64748b; font-weight:500;">${isEn ? 'Close' : 'क्लोज'}: ₹${s.close || s.entry}</div>`;
+
       return `
         <tr>
           <td>
@@ -443,7 +461,10 @@ const AAAScreenerModule = (function () {
             <span class="aaa-pattern-tag">${s.pattern}</span>
           </td>
           <td>${trendBadge}</td>
-          <td class="aaa-price">₹${s.entry}</td>
+          <td class="aaa-price">
+            ${trigHtml}
+            ${closeSub}
+          </td>
           <td class="aaa-price text-danger">₹${s.stopLoss}</td>
           <td class="aaa-price text-success">₹${s.target1}</td>
           <td class="aaa-price text-success">₹${s.target2}</td>
@@ -463,10 +484,11 @@ const AAAScreenerModule = (function () {
 
   function updateModalSubtitle(s) {
     const isEn = window.I18N && window.I18N.getLang() === 'en';
-    const entryLbl = isEn ? 'Entry' : 'एन्ट्री';
+    const trigLbl = isEn ? (s.type === 'BUY' ? 'Buy Trigger' : 'Sell Trigger') : (s.type === 'BUY' ? 'खरेदी ट्रिगर' : 'विक्री ट्रिगर');
     const ltpLbl = isEn ? 'Live LTP' : 'चालू भाव (LTP)';
-    const curLtp = s.ltp != null ? Number(s.ltp).toFixed(2) : s.entry;
-    const isUp = (s.type === 'BUY' && Number(curLtp) >= s.entry) || (s.type === 'SELL' && Number(curLtp) <= s.entry);
+    const curLtp = s.ltp != null ? Number(s.ltp).toFixed(2) : (s.close || s.entry);
+    const trigVal = s.triggerLevel || s.entry;
+    const isUp = (s.type === 'BUY' && Number(curLtp) >= trigVal) || (s.type === 'SELL' && Number(curLtp) <= trigVal);
     const ltpCol = isUp ? '#059669' : '#dc2626';
 
     const titleEl = document.getElementById('aaaModalSymbol');
@@ -476,7 +498,7 @@ const AAAScreenerModule = (function () {
 
     const subEl = document.getElementById('aaaModalSubtitle');
     if (subEl) {
-      subEl.innerHTML = `${entryLbl}: ₹${s.entry} | SL: ₹${s.stopLoss} | Tgt 1: ₹${s.target1} | Tgt 2: ₹${s.target2} | <strong style="color:${ltpCol}; font-size:12px;">${ltpLbl}: ₹${curLtp}</strong>`;
+      subEl.innerHTML = `<strong style="color:${s.type === 'BUY' ? '#047857' : '#b91c1c'};">${trigLbl}: ${s.type === 'BUY' ? '>' : '<'} ₹${trigVal}</strong> | ${isEn ? 'Close' : 'क्लोज'}: ₹${s.close || s.entry} | SL: ₹${s.stopLoss} | T1: ₹${s.target1} | T2: ₹${s.target2} | <strong style="color:${ltpCol}; font-size:12px;">${ltpLbl}: ₹${curLtp}</strong>`;
     }
   }
 
@@ -654,21 +676,25 @@ const AAAScreenerModule = (function () {
       }
     });
 
-    // Entry, SL & Target Overlay lines
+    // Trigger Level, SL & Target Overlay lines
     ctx.textAlign = 'right';
     const isEn = window.I18N && window.I18N.getLang() === 'en';
-    if (s.entry) {
-      const yEnt = getY(s.entry);
-      ctx.strokeStyle = '#2563eb';
+    const trigVal = s.triggerLevel || s.entry;
+    if (trigVal) {
+      const yTrig = getY(trigVal);
+      ctx.strokeStyle = s.type === 'BUY' ? '#047857' : '#b91c1c';
       ctx.lineWidth = 2;
-      ctx.setLineDash([]);
+      ctx.setLineDash([6, 3]);
       ctx.beginPath();
-      ctx.moveTo(margin.left, yEnt);
-      ctx.lineTo(margin.left + plotW, yEnt);
+      ctx.moveTo(margin.left, yTrig);
+      ctx.lineTo(margin.left + plotW, yTrig);
       ctx.stroke();
-      ctx.fillStyle = '#2563eb';
+      ctx.fillStyle = s.type === 'BUY' ? '#047857' : '#b91c1c';
       ctx.font = 'bold 11px sans-serif';
-      ctx.fillText(`${isEn ? 'Entry (Close)' : 'एन्ट्री (Close)'}: ₹${s.entry}`, margin.left + plotW - 8, yEnt - 6);
+      const trigTxt = s.type === 'BUY'
+        ? (isEn ? `Buy Trigger (> High): ₹${trigVal}` : `खरेदी ट्रिगर (> High): ₹${trigVal}`)
+        : (isEn ? `Sell Trigger (< Low): ₹${trigVal}` : `विक्री ट्रिगर (< Low): ₹${trigVal}`);
+      ctx.fillText(trigTxt, margin.left + plotW - 8, yTrig - 6);
     }
     if (s.stopLoss) {
       const ySl = getY(s.stopLoss);
@@ -875,29 +901,50 @@ const AAAScreenerModule = (function () {
         s.ltp = price;
         if (tick.changePercent != null) s.changePercent = tick.changePercent;
 
-        // Never overwrite if trade is already resolved (SL_HIT or TARGET_2_HIT)
-        if (s.status !== 'SL_HIT' && s.status !== 'TARGET_2_HIT') {
+        // Never overwrite if trade is already resolved (SL_HIT, TARGET_2_HIT, or EXPIRED)
+        if (s.status !== 'SL_HIT' && s.status !== 'TARGET_2_HIT' && s.status !== 'EXPIRED') {
+          const trigVal = s.triggerLevel || s.entry;
           if (s.type === 'BUY') {
-            if (s.stopLoss && price <= s.stopLoss && s.status !== 'TARGET_1_HIT') {
-              s.status = 'SL_HIT';
-              s.statusText = '🛑 Stop Loss Hit (Live)';
-            } else if (s.target2 && price >= s.target2) {
-              s.status = 'TARGET_2_HIT';
-              s.statusText = '🎯 Target 2 Hit (Live)';
-            } else if (s.target1 && price >= s.target1 && s.status === 'ACTIVE') {
-              s.status = 'TARGET_1_HIT';
-              s.statusText = '✅ Target 1 Hit (Live)';
+            if (s.status === 'AWAITING_TRIGGER') {
+              if (trigVal && price >= trigVal) {
+                s.status = 'TRIGGERED';
+                s.statusText = '🟢 ट्रिगर झाला (Live)';
+              } else if (s.stopLoss && price <= s.stopLoss) {
+                s.status = 'EXPIRED';
+                s.statusText = '⚪ ट्रिगर झाला नाही / रद्द';
+              }
+            } else if (s.status === 'TRIGGERED' || s.status === 'ACTIVE') {
+              if (s.target2 && price >= s.target2) {
+                s.status = 'TARGET_2_HIT';
+                s.statusText = '🎯 Target 2 Hit (Live)';
+              } else if (s.target1 && price >= s.target1 && s.status === 'TRIGGERED') {
+                s.status = 'TARGET_1_HIT';
+                s.statusText = '✅ Target 1 Hit (Live)';
+              } else if (s.stopLoss && price <= s.stopLoss && s.status !== 'TARGET_1_HIT') {
+                s.status = 'SL_HIT';
+                s.statusText = '🛑 Stop Loss Hit (Live)';
+              }
             }
           } else if (s.type === 'SELL') {
-            if (s.stopLoss && price >= s.stopLoss && s.status !== 'TARGET_1_HIT') {
-              s.status = 'SL_HIT';
-              s.statusText = '🛑 Stop Loss Hit (Live)';
-            } else if (s.target2 && price <= s.target2) {
-              s.status = 'TARGET_2_HIT';
-              s.statusText = '🎯 Target 2 Hit (Live)';
-            } else if (s.target1 && price <= s.target1 && s.status === 'ACTIVE') {
-              s.status = 'TARGET_1_HIT';
-              s.statusText = '✅ Target 1 Hit (Live)';
+            if (s.status === 'AWAITING_TRIGGER') {
+              if (trigVal && price <= trigVal) {
+                s.status = 'TRIGGERED';
+                s.statusText = '🟢 ट्रिगर झाला (Live)';
+              } else if (s.stopLoss && price >= s.stopLoss) {
+                s.status = 'EXPIRED';
+                s.statusText = '⚪ ट्रिगर झाला नाही / रद्द';
+              }
+            } else if (s.status === 'TRIGGERED' || s.status === 'ACTIVE') {
+              if (s.target2 && price <= s.target2) {
+                s.status = 'TARGET_2_HIT';
+                s.statusText = '🎯 Target 2 Hit (Live)';
+              } else if (s.target1 && price <= s.target1 && s.status === 'TRIGGERED') {
+                s.status = 'TARGET_1_HIT';
+                s.statusText = '✅ Target 1 Hit (Live)';
+              } else if (s.stopLoss && price >= s.stopLoss && s.status !== 'TARGET_1_HIT') {
+                s.status = 'SL_HIT';
+                s.statusText = '🛑 Stop Loss Hit (Live)';
+              }
             }
           }
         }
