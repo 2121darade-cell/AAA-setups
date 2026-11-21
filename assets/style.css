@@ -2636,3 +2636,82 @@ body {
   animation: aaaPriceFlash 0.35s ease-out;
   display: inline-block;
 }
+
+/* Chart Inline Loader & Empty State */
+.chart-inline-loader {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(255, 255, 255, 0.88);
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 25;
+  gap: 12px;
+  backdrop-filter: blur(2px);
+}
+.chart-loader-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid #e2e8f0;
+  border-top-color: #2563eb;
+  border-radius: 50%;
+  animation: chartSpin 0.75s linear infinite;
+}
+@keyframes chartSpin {
+  to { transform: rotate(360deg); }
+}
+.chart-loader-text {
+  font-size: 13px;
+  font-weight: 600;
+  color: #334155;
+}
+
+.chart-empty-state {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: #ffffff;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 24;
+  gap: 8px;
+  padding: 20px;
+  text-align: center;
+}
+.chart-empty-icon {
+  font-size: 38px;
+  color: #94a3b8;
+}
+.chart-empty-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #1e293b;
+}
+.chart-empty-desc {
+  font-size: 12px;
+  color: #64748b;
+  max-width: 380px;
+}
+.chart-retry-btn {
+  margin-top: 10px;
+  padding: 6px 16px;
+  font-size: 12px;
+  font-weight: 600;
+  background: #2563eb;
+  color: #ffffff;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.chart-retry-btn:hover {
+  background: #1d4ed8;
+}

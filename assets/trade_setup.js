@@ -629,7 +629,13 @@ const TradeSetupModule = (function () {
     ctx.clearRect(0, 0, width, height);
 
     const candles = sig.Candles || [];
-    if (candles.length === 0) return;
+    if (candles.length === 0) {
+      ctx.fillStyle = '#64748b';
+      ctx.font = '14px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('चार्ट डेटा लोड होत आहे... कृपया थांबा (Loading chart data...)', width / 2, height / 2);
+      return;
+    }
 
     const margin = { top: 28, right: 80, bottom: 30, left: 20 };
     const plotW = width - margin.left - margin.right;

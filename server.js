@@ -1039,7 +1039,7 @@ async function getTradejiniCandles(symbol, interval = '5', days = 90) {
     ? (normIntv === '1D' ? 'D' : (normIntv === '1W' ? 'W' : (normIntv === '1M' ? 'M' : normIntv)))
     : '5';
 
-  const reqDays = (tf === 'W' || tf === 'M') ? 365 : (tf === 'D' ? Math.max(Number(days) || 90, 90) : (Number(days) || 7));
+  const reqDays = (tf === 'W' || tf === 'M') ? Math.max(Number(days) || 1095, 1095) : (tf === 'D' ? Math.max(Number(days) || 365, 90) : (Number(days) || 30));
   const dhanRes = await dhan.getDhanCandles(symbol, tf, reqDays);
   if (dhanRes && dhanRes.s === 'ok' && Array.isArray(dhanRes.candles)) {
     const quote = extractQuoteFromCandles(symbol, dhanRes.candles);
@@ -3759,7 +3759,7 @@ const server = http.createServer(async (req, res) => {
     if (pathname === '/api/tradejini/candles' || pathname === '/api/dhan/candles') {
       const symbol = parsedUrl.searchParams.get('symbol') || 'NIFTY 50';
       const interval = parsedUrl.searchParams.get('interval') || parsedUrl.searchParams.get('resolution') || '5';
-      const days = parseInt(parsedUrl.searchParams.get('days') || '7', 10);
+      const days = parseInt(parsedUrl.searchParams.get('days') || '30', 10);
       const candleResult = await getTradejiniCandles(symbol, interval, days);
       sendJson(res, 200, candleResult);
       return;

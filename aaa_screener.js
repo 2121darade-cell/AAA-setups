@@ -512,20 +512,23 @@ const AAAScreenerModule = (function () {
     modal.classList.add('active');
     setTimeout(() => drawCandlestickModal(s), 50);
 
-    // Fetch full 60-day daily candles so subsequent trading days & today are visible
-    fetch(`./api/tradejini/candles?symbol=${encodeURIComponent(s.symbol)}&interval=D&days=60`)
+    // Fetch full 180-day daily candles so subsequent trading days & today are visible
+    fetch(`./api/tradejini/candles?symbol=${encodeURIComponent(s.symbol)}&interval=D&days=180`)
       .then(res => res.ok ? res.json() : null)
       .then(data => {
         if (data && data.s === 'ok' && Array.isArray(data.candles) && data.candles.length > 0) {
           const dailyCandles = data.candles;
           const sigDateClean = String(s.date || '').replace(/\s*\(1D\)/i, '').replace(/_/g, ' ').trim();
-          const sigIdx = dailyCandles.findIndex(c => {
+          let sigIdx = dailyCandles.findIndex(c => {
             const d1 = String(c.fullDate || '').trim();
             const d2 = String(c.date || '').trim();
             return d1 === sigDateClean || d2 === sigDateClean || sigDateClean.includes(d1) || sigDateClean.includes(d2);
           });
+          if (sigIdx === -1) {
+            sigIdx = dailyCandles.length - 1;
+          }
           if (sigIdx !== -1) {
-            const sliceStart = Math.max(0, sigIdx - 14);
+            const sliceStart = Math.max(0, sigIdx - 25);
             const sliceEnd = Math.min(dailyCandles.length, sigIdx + 15);
             s.candles = dailyCandles.slice(sliceStart, sliceEnd);
             s.signalOffsetFromEnd = (s.candles.length - 1) - (sigIdx - sliceStart);
@@ -543,6 +546,12 @@ const AAAScreenerModule = (function () {
     if (modal) modal.classList.remove('active');
   }
 
+  function openCurrentModalInMainChart() {
+    if (currentChartData && currentChartData.symbol) {
+      openInMainPortal(currentChartData.symbol);
+    }
+  }
+
   function drawCandlestickModal(s) {
     const canvas = document.getElementById('aaaCanvas');
     if (!canvas) return;
@@ -558,7 +567,13 @@ const AAAScreenerModule = (function () {
     ctx.clearRect(0, 0, width, height);
 
     const candles = s.candles || [];
-    if (candles.length === 0) return;
+    if (candles.length === 0) {
+      ctx.fillStyle = '#64748b';
+      ctx.font = '14px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('चार्ट डेटा लोड होत आहे... कृपया थांबा (Loading chart data...)', width / 2, height / 2);
+      return;
+    }
 
     const margin = { top: 26, right: 80, bottom: 32, left: 15 };
     const plotW = width - margin.left - margin.right;
@@ -986,6 +1001,7 @@ const AAAScreenerModule = (function () {
     openChartModal,
     closeChartModal,
     openInMainPortal,
+    openCurrentModalInMainChart,
     onLanguageChange,
     onTick,
     getActiveSymbols

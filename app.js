@@ -1127,9 +1127,18 @@ function switchView(viewName) {
   if (viewName === 'chart') {
     if (AppState.chart) {
       AppState.chart.resize();
-      setTimeout(() => AppState.chart && AppState.chart.resize(), 60);
-      setTimeout(() => AppState.chart && AppState.chart.resize(), 180);
     }
+    setTimeout(() => {
+      if (AppState.chart) AppState.chart.resize();
+      else if (AppState.liveCandles && AppState.liveCandles.length > 0) renderEChart(false);
+      else if (AppState.currentAsset) loadCandlesForActiveAsset();
+    }, 50);
+    setTimeout(() => {
+      if (AppState.chart) AppState.chart.resize();
+    }, 180);
+    setTimeout(() => {
+      if (AppState.chart) AppState.chart.resize();
+    }, 360);
   } else if (viewName === 'trade-setup') {
     if (window.TradeSetupModule) {
       window.TradeSetupModule.init();
@@ -1775,17 +1784,164 @@ function initTradejiniAutoLoginBadge() {
   }
 }
 
+function getFetchDaysForTimeframe(tf) {
+  if (tf === 'W') return 1095; // 3 years (~150 bars)
+  if (tf === 'M') return 1825; // 5 years (~60 bars)
+  if (tf === 'D') return 365;  // 1 year (~250 bars)
+  if (tf === '60' || tf === '1H') return 60; // 60 days (~375 bars)
+  if (tf === '15' || tf === '15M') return 45; // 45 days (~1,125 bars)
+  if (tf === '5' || tf === '5M') return 30; // 30 days (~1,500 bars)
+  if (tf === '1' || tf === '1M') return 10; // 10 days (~3,750 bars)
+  return 30;
+}
+
+function showChartLoader(symbol) {
+  hideChartEmptyState();
+  let loader = document.getElementById('chart-inline-loader');
+  if (!loader) {
+    loader = document.createElement('div');
+    loader.id = 'chart-inline-loader';
+    loader.className = 'chart-inline-loader';
+    const container = document.getElementById('echarts-candlestick-container');
+    if (container) container.appendChild(loader);
+  }
+  loader.innerHTML = `
+    <div class="chart-loader-spinner"></div>
+    <div class="chart-loader-text">${symbol || ''} चार्ट डेटा लोड होत आहे... (Loading...)</div>
+  `;
+  loader.style.display = 'flex';
+}
+
+function hideChartLoader() {
+  const loader = document.getElementById('chart-inline-loader');
+  if (loader) loader.style.display = 'none';
+}
+
+function showChartEmptyState(symbol, message) {
+  hideChartLoader();
+  let empty = document.getElementById('chart-empty-state');
+  if (!empty) {
+    empty = document.createElement('div');
+    empty.id = 'chart-empty-state';
+    empty.className = 'chart-empty-state';
+    const container = document.getElementById('echarts-candlestick-container');
+    if (container) container.appendChild(empty);
+  }
+  empty.innerHTML = `
+    <div class="chart-empty-icon">📊</div>
+    <div class="chart-empty-title">${symbol || 'स्टॉक'}: डेटा लोड झाला नाही (Data Unavailable)</div>
+    <div class="chart-empty-desc">${message || 'कृपया टाइमफ्रेम बदला किंवा थोड्या वेळाने पुन्हा प्रयत्न करा.'}</div>
+    <button class="chart-retry-btn" onclick="window.loadCandlesForActiveAsset()">🔄 पुन्हा प्रयत्न करा (Retry)</button>
+  `;
+  empty.style.display = 'flex';
+}
+
+function hideChartEmptyState() {
+  const empty = document.getElementById('chart-empty-state');
+  if (empty) empty.style.display = 'none';
+}
+
+async function loadMoreHistoryForActiveAsset() {
+  if (AppState._isLoadingMoreHistory || AppState._noMoreHistory) return;
+  if (!AppState.currentAsset || !AppState.currentAsset.symbol) return;
+  const sym = AppState.currentAsset.symbol;
+  const tf = AppState.currentTimeframe;
+
+  let nextDays = 0;
+  const curDays = AppState._historyLoadedDays || getFetchDaysForTimeframe(tf);
+  if (tf === 'D') {
+    if (curDays < 730) nextDays = 730;
+    else if (curDays < 1825) nextDays = 1825;
+    else { AppState._noMoreHistory = true; return; }
+  } else if (tf === 'W' || tf === 'M') {
+    if (curDays < 1825) nextDays = 1825;
+    else { AppState._noMoreHistory = true; return; }
+  } else {
+    // Intraday (1, 5, 15, 60)
+    if (curDays < 60) nextDays = 60;
+    else { AppState._noMoreHistory = true; return; }
+  }
+
+  AppState._isLoadingMoreHistory = true;
+  try {
+    const res = await fetch(`./api/tradejini/candles?symbol=${encodeURIComponent(sym)}&interval=${tf}&days=${nextDays}`);
+    if (!res.ok) { AppState._isLoadingMoreHistory = false; return; }
+    const data = await res.json();
+    if (data.s === 'ok' && Array.isArray(data.candles) && data.candles.length > 0) {
+      const incoming = data.candles;
+      AppState._historyLoadedDays = nextDays;
+
+      const existingMap = new Map();
+      (AppState.liveCandles || []).forEach(c => {
+        if (c && c.timestamp) existingMap.set(Math.floor(Number(c.timestamp) / 1000), c);
+      });
+      incoming.forEach(c => {
+        if (c && c.timestamp) existingMap.set(Math.floor(Number(c.timestamp) / 1000), c);
+      });
+
+      const merged = Array.from(existingMap.values());
+      merged.sort((a, b) => a.timestamp - b.timestamp);
+
+      const oldLen = (AppState.liveCandles || []).length;
+      const newBarsAdded = merged.length - oldLen;
+
+      if (newBarsAdded > 0) {
+        AppState.liveCandles = merged;
+
+        let curRange = null;
+        if (AppState.tvChart) {
+          try { curRange = AppState.tvChart.timeScale().getVisibleLogicalRange(); } catch (e) {}
+        }
+
+        renderEChart(false);
+
+        if (curRange && AppState.tvChart) {
+          try {
+            AppState.tvChart.timeScale().setVisibleLogicalRange({
+              from: curRange.from + newBarsAdded,
+              to: curRange.to + newBarsAdded
+            });
+          } catch (e) {}
+        }
+      } else {
+        AppState._noMoreHistory = true;
+      }
+    } else {
+      AppState._noMoreHistory = true;
+    }
+  } catch (e) {
+    // continuous pagination catch
+  } finally {
+    AppState._isLoadingMoreHistory = false;
+  }
+}
+
 async function fetchLiveCandlesFromTradejini(asset, resetZoom = false) {
   if (!asset || !asset.symbol) return;
   const sym = asset.symbol;
   const tf = AppState.currentTimeframe;
 
   try {
-    const days = (tf === 'W' || tf === 'M') ? 365 : (tf === 'D' ? 90 : 7);
+    const days = getFetchDaysForTimeframe(tf);
+    AppState._historyLoadedDays = days;
+    AppState._noMoreHistory = false;
+
+    if (!AppState.liveCandles || AppState.liveCandles.length === 0) {
+      showChartLoader(sym);
+    }
+
     const res = await fetch(`./api/tradejini/candles?symbol=${encodeURIComponent(sym)}&interval=${tf}&days=${days}`);
-    if (!res.ok) return;
+    if (!res.ok) {
+      hideChartLoader();
+      if (!AppState.liveCandles || AppState.liveCandles.length === 0) {
+        showChartEmptyState(sym, 'सर्व्हरकडून प्रतिसाद मिळाला नाही (Server returned ' + res.status + ')');
+      }
+      return;
+    }
     const data = await res.json();
     if (data.s === 'ok' && Array.isArray(data.candles) && data.candles.length > 0) {
+      hideChartLoader();
+      hideChartEmptyState();
       const incoming = data.candles;
       AppState.liveCandles = incoming;
       const last = incoming[incoming.length - 1];
@@ -1820,9 +1976,17 @@ async function fetchLiveCandlesFromTradejini(asset, resetZoom = false) {
         AppState._zoomNeedsReset = true;
       }
       renderEChart(resetZoom);
+    } else {
+      hideChartLoader();
+      if (!AppState.liveCandles || AppState.liveCandles.length === 0) {
+        showChartEmptyState(sym, 'या सिम्बॉलसाठी कॅन्डल डेटा उपलब्ध नाही (No candle data available)');
+      }
     }
   } catch (e) {
-    // Continuous polling catch
+    hideChartLoader();
+    if (!AppState.liveCandles || AppState.liveCandles.length === 0) {
+      showChartEmptyState(sym, 'कनेक्शन त्रुटी (Network Connection Error)');
+    }
   }
 }
 
@@ -1906,7 +2070,14 @@ function renderEChart(resetZoom = false) {
   if (!container) return;
 
   const candles = AppState.liveCandles || [];
-  if (candles.length === 0) return;
+  if (candles.length === 0) {
+    if (AppState.currentAsset) {
+      showChartEmptyState(AppState.currentAsset.symbol, 'या सिम्बॉलसाठी कॅन्डल डेटा उपलब्ध नाही (No candle data available)');
+    }
+    return;
+  }
+  hideChartEmptyState();
+  hideChartLoader();
 
   const rsiPaneWrapper = document.getElementById('tv-rsi-subpane-wrapper');
   const rsiContainer = document.getElementById('tv-rsi-chart-container');
@@ -2001,7 +2172,7 @@ function renderEChart(resetZoom = false) {
         if (AppState.tvChart && container) {
           AppState.tvChart.applyOptions({
             width: container.clientWidth || 800,
-            height: container.clientHeight || 380
+            height: container.clientHeight || 420
           });
         }
         if (AppState.tvRsiChart && rsiContainer && rsiPaneWrapper && rsiPaneWrapper.style.display !== 'none') {
@@ -2021,6 +2192,13 @@ function renderEChart(resetZoom = false) {
       }
     });
     ro.observe(container);
+
+    // Dedicated Left-Scroll Historical Pagination Listener
+    AppState.tvChart.timeScale().subscribeVisibleLogicalRangeChange((range) => {
+      if (range && range.from < 6 && !AppState._isLoadingMoreHistory && !AppState._noMoreHistory) {
+        loadMoreHistoryForActiveAsset();
+      }
+    });
 
     // Crosshair Hover Handler
     AppState.tvChart.subscribeCrosshairMove((param) => {
@@ -2854,6 +3032,10 @@ function selectStock(symbol) {
   AppState.currentAsset = asset;
   AppState.liveCandles = []; // Clean slate to avoid mixing candle bars
   AppState.prevClosePrice = asset.prevClose || asset.price;
+  AppState._isLoadingMoreHistory = false;
+  AppState._noMoreHistory = false;
+  AppState._historyLoadedDays = getFetchDaysForTimeframe(AppState.currentTimeframe);
+  showChartLoader(asset.symbol);
 
   // Update UI Header
   const elBadge = document.getElementById('active-stock-badge');
@@ -3320,6 +3502,13 @@ function initApplication() {
     });
     AppState._zoomNeedsReset = true;
     AppState.currentTimeframe = String(tf);
+    AppState.liveCandles = [];
+    AppState._isLoadingMoreHistory = false;
+    AppState._noMoreHistory = false;
+    AppState._historyLoadedDays = getFetchDaysForTimeframe(String(tf));
+    if (AppState.currentAsset) {
+      showChartLoader(AppState.currentAsset.symbol);
+    }
     loadCandlesForActiveAsset();
   }
   window.switchTimeframe = switchTimeframe;
